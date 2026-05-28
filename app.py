@@ -73,6 +73,8 @@ def init_db():
             imported_at TEXT NOT NULL,
             subject     TEXT,
             segment     TEXT,
+            category    TEXT,
+            email_copy  TEXT,
             abertura    REAL,
             cltk        REAL,
             enviados    INTEGER,
@@ -83,6 +85,19 @@ def init_db():
     conn.close()
 
 init_db()
+
+def _migrate_db():
+    """Add columns introduced after the initial schema without breaking existing DBs."""
+    conn = get_db()
+    for col, coltype in [("category", "TEXT"), ("email_copy", "TEXT")]:
+        try:
+            conn.execute(f"ALTER TABLE email_data ADD COLUMN {col} {coltype}")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+    conn.close()
+
+_migrate_db()
 
 # ── AI config helpers ─────────────────────────────────────────────────────────
 def _ai_config_path():
@@ -332,6 +347,8 @@ def admin_upload():
         "open_rate": ["Taxa de abertura", "Open Rate", "taxa_abertura", "taxa de abertura", "Open rate"],
         "cltk":      ["Taxa de clickthrough", "CLTK", "taxa_cltk", "taxa de clickthrough", "Click rate"],
         "segment":   ["Segmento", "Segment", "Audience", "Público", "Lista", "List", "segmento", "audience"],
+        "category":  ["Categoria", "Category", "Objetivo", "Tipo", "Type", "categoria", "category", "objetivo"],
+        "copy":      ["Copy", "Texto", "Body", "Conteúdo", "Conteudo", "copy", "texto", "body"],
     }
 
     def find_col(hdrs, keys):
@@ -345,6 +362,8 @@ def admin_upload():
     cltk_col = find_col(headers, col_candidates["cltk"])
     sent_col = find_col(headers, col_candidates["sent"])
     seg_col  = find_col(headers, col_candidates["segment"])
+    cat_col  = find_col(headers, col_candidates["category"])
+    copy_col = find_col(headers, col_candidates["copy"])
 
     if not (open_col and cltk_col):
         return jsonify({
@@ -362,12 +381,15 @@ def admin_upload():
             abertura = float(str(row[open_col]).replace(",", ".").replace("%", ""))
             cltk     = float(str(row[cltk_col]).replace(",", ".").replace("%", ""))
             enviados = int(float(str(row[sent_col]).replace(",", "."))) if sent_col and row.get(sent_col) else None
-            segment  = str(row.get(seg_col, "")).strip() if seg_col else None
+            segment    = str(row.get(seg_col,  "")).strip() if seg_col  else None
+            category   = str(row.get(cat_col,  "")).strip() if cat_col  else None
+            email_copy = str(row.get(copy_col, "")).strip() if copy_col else None
             if not (0 <= abertura <= 100 and 0 <= cltk <= 100):
                 continue
             conn.execute(
-                "INSERT INTO email_data (imported_at, subject, segment, abertura, cltk, enviados, source) VALUES (?,?,?,?,?,?,?)",
-                (now, subject, segment, abertura, cltk, enviados, file.filename)
+                "INSERT INTO email_data (imported_at, subject, segment, category, email_copy, abertura, cltk, enviados, source) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (now, subject, segment, category, email_copy, abertura, cltk, enviados, file.filename)
             )
             inserted += 1
         except (ValueError, TypeError, KeyError):
@@ -376,34 +398,46 @@ def admin_upload():
     conn.commit()
 
     # Rebuild benchmarks from all imported data
-    db_rows = conn.execute("SELECT segment, abertura, cltk FROM email_data").fetchall()
+    db_rows = conn.execute("SELECT segment, category, abertura, cltk FROM email_data").fetchall()
     conn.close()
 
     _rebuild_benchmarks(db_rows)
 
     return jsonify({
-        "ok":           True,
-        "inserted":     inserted,
-        "total_rows":   len(rows_raw),
-        "has_segments": seg_col is not None,
-        "message":      f"{inserted} e-mails importados com sucesso."
-                        + (f" Segmento detectado: coluna '{seg_col}'." if seg_col else ""),
+        "ok":         True,
+        "inserted":   inserted,
+        "total_rows": len(rows_raw),
+        "message":    f"{inserted} e-mails importados com sucesso."
+                      + (f" Colunas extras: {', '.join(c for c in [seg_col and 'segmento', cat_col and 'categoria', copy_col and 'copy'] if c)}."
+                         if any([seg_col, cat_col, copy_col]) else
+                         " Dica: adicione colunas de Segmento, Categoria e Copy para calibração mais precisa."),
     })
 
 def _rebuild_benchmarks(db_rows):
-    """Recalculate overall and per-segment benchmarks from all imported rows."""
+    """Recalculate overall, per-segment and per-category benchmarks from all imported rows."""
     if not db_rows:
         return
 
     all_ab   = [r["abertura"] for r in db_rows if r["abertura"] is not None]
     all_cltk = [r["cltk"]    for r in db_rows if r["cltk"]    is not None]
 
-    by_segment: dict = defaultdict(lambda: {"ab": [], "cltk": []})
+    def _agg(rows):
+        ab   = [r["abertura"] for r in rows if r["abertura"] is not None]
+        cl   = [r["cltk"]     for r in rows if r["cltk"]     is not None]
+        if not ab: return None
+        return {
+            "abertura": round(sum(ab) / len(ab), 2),
+            "cltk":     round(sum(cl) / len(cl), 2) if cl else 0,
+            "total":    len(ab),
+        }
+
+    by_segment:  dict = defaultdict(list)
+    by_category: dict = defaultdict(list)
     for r in db_rows:
-        seg = (r["segment"] or "").strip()
-        if seg:
-            by_segment[seg]["ab"].append(r["abertura"])
-            by_segment[seg]["cltk"].append(r["cltk"])
+        seg = (r["segment"]  or "").strip()
+        cat = (r["category"] or "").strip()
+        if seg: by_segment[seg].append(r)
+        if cat: by_category[cat].append(r)
 
     custom = {
         "media_abertura": round(sum(all_ab)   / len(all_ab),   2) if all_ab   else 25.0,
@@ -411,15 +445,13 @@ def _rebuild_benchmarks(db_rows):
         "total_emails":   len(all_ab),
     }
 
-    if by_segment:
-        custom["segments"] = {}
-        for seg, vals in by_segment.items():
-            if vals["ab"] and vals["cltk"]:
-                custom["segments"][seg] = {
-                    "abertura": round(sum(vals["ab"])   / len(vals["ab"]),   2),
-                    "cltk":     round(sum(vals["cltk"]) / len(vals["cltk"]), 2),
-                    "total":    len(vals["ab"]),
-                }
+    seg_data = {seg: _agg(rows) for seg, rows in by_segment.items()}
+    cat_data = {cat: _agg(rows) for cat, rows in by_category.items()}
+
+    if any(v for v in seg_data.values()):
+        custom["segments"] = {k: v for k, v in seg_data.items() if v}
+    if any(v for v in cat_data.values()):
+        custom["categories"] = {k: v for k, v in cat_data.items() if v}
 
     os.makedirs(DATA_DIR, exist_ok=True)
     bench_path = os.path.join(DATA_DIR, "custom_benchmarks.json")

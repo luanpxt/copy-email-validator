@@ -63,16 +63,112 @@
 
     <!-- How-to -->
     <details class="mb-5 bg-slate-700/40 rounded-xl">
-      <summary class="px-4 py-3 cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-medium">
-        📋 Como exportar do HubSpot
+      <summary class="px-4 py-3 cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-medium select-none">
+        📋 Como preparar o arquivo CSV
       </summary>
-      <div class="px-4 pb-4 text-sm text-slate-400 space-y-2 mt-2">
-        <p>1. No HubSpot, vá em <strong class="text-slate-300">Marketing → Email</strong></p>
-        <p>2. Selecione todos os e-mails desejados (ou filtre por data)</p>
-        <p>3. Clique em <strong class="text-slate-300">Exportar → CSV</strong> no canto superior direito</p>
-        <p>4. Aguarde o e-mail com o link de download e salve o arquivo</p>
-        <p>5. Faça upload aqui — o arquivo deve conter colunas de <strong class="text-slate-300">Taxa de abertura</strong> e <strong class="text-slate-300">Taxa de clickthrough</strong></p>
-        <p class="text-slate-500">Colunas aceitas: Nome do email, Assunto, Enviado, Taxa de abertura, Taxa de clickthrough</p>
+      <div class="px-4 pb-5 pt-3 text-sm text-slate-400 space-y-5">
+
+        <!-- Passo 1 -->
+        <div>
+          <p class="font-semibold text-slate-300 mb-2">1. Exporte do HubSpot</p>
+          <ol class="space-y-1 pl-3 list-decimal list-inside">
+            <li>No HubSpot, vá em <strong class="text-slate-300">Marketing → Email</strong></li>
+            <li>Selecione os e-mails desejados (filtre por data se quiser)</li>
+            <li>Clique em <strong class="text-slate-300">Exportar → CSV</strong> no canto superior direito</li>
+            <li>Aguarde o e-mail com o link de download e salve o arquivo</li>
+          </ol>
+        </div>
+
+        <!-- Passo 2 -->
+        <div>
+          <p class="font-semibold text-slate-300 mb-2">2. Adicione as colunas manuais no CSV</p>
+          <p class="text-slate-500 mb-3">
+            O HubSpot <strong class="text-slate-400">não exporta</strong> o conteúdo do e-mail nem a classificação da base por padrão.
+            Abra o arquivo no Excel ou Google Sheets e adicione as colunas abaixo para cada linha:
+          </p>
+
+          <div class="space-y-2">
+
+            <div class="bg-slate-800 rounded-lg px-3 py-2.5 border border-slate-600">
+              <div class="flex items-start gap-2">
+                <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
+                <div>
+                  <p class="text-slate-200 font-medium">Copy</p>
+                  <p class="text-slate-500 text-xs mt-0.5">Texto puro do e-mail (sem HTML). Cole o conteúdo de cada envio na célula correspondente.</p>
+                  <p class="text-slate-600 text-xs mt-1">Nome da coluna: <code class="text-slate-400">Copy</code> ou <code class="text-slate-400">Texto</code> ou <code class="text-slate-400">Body</code></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-lg px-3 py-2.5 border border-slate-600">
+              <div class="flex items-start gap-2">
+                <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
+                <div>
+                  <p class="text-slate-200 font-medium">Categoria</p>
+                  <p class="text-slate-500 text-xs mt-0.5">Objetivo do e-mail. Classifique cada envio com um dos valores abaixo:</p>
+                  <div class="flex flex-wrap gap-1.5 mt-1.5">
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Newsletter</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Nutricao</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Conversao</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Pre-vendas</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Agradecimento</span>
+                  </div>
+                  <p class="text-slate-600 text-xs mt-1.5">Nome da coluna: <code class="text-slate-400">Categoria</code> ou <code class="text-slate-400">Category</code> ou <code class="text-slate-400">Objetivo</code></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-lg px-3 py-2.5 border border-slate-600">
+              <div class="flex items-start gap-2">
+                <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
+                <div>
+                  <p class="text-slate-200 font-medium">Tipo da base (segmento)</p>
+                  <p class="text-slate-500 text-xs mt-0.5">Qual lista ou segmento recebeu o e-mail. Classifique cada envio:</p>
+                  <div class="flex flex-wrap gap-1.5 mt-1.5">
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Clientes</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">MQL+</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">MQL-</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Prospects</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Lost</span>
+                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Geral</span>
+                  </div>
+                  <p class="text-slate-600 text-xs mt-1.5">Nome da coluna: <code class="text-slate-400">Segmento</code> ou <code class="text-slate-400">Segment</code> ou <code class="text-slate-400">Audience</code> ou <code class="text-slate-400">Lista</code></p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Passo 3 -->
+        <div>
+          <p class="font-semibold text-slate-300 mb-2">3. Colunas automáticas do HubSpot</p>
+          <p class="text-slate-500 mb-2">Essas já vêm no export — apenas verifique se estão presentes:</p>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-slate-800/60 rounded px-3 py-2 border border-slate-700">
+              <p class="text-slate-300 text-xs font-medium">Assunto / Subject</p>
+              <p class="text-slate-600 text-xs">Linha de assunto do e-mail</p>
+            </div>
+            <div class="bg-slate-800/60 rounded px-3 py-2 border border-slate-700">
+              <p class="text-slate-300 text-xs font-medium">Taxa de abertura / Open Rate</p>
+              <p class="text-slate-600 text-xs">Valor em % (ex: 34,5)</p>
+            </div>
+            <div class="bg-slate-800/60 rounded px-3 py-2 border border-slate-700">
+              <p class="text-slate-300 text-xs font-medium">Taxa de clickthrough / CLTK</p>
+              <p class="text-slate-600 text-xs">Valor em % (ex: 2,1)</p>
+            </div>
+            <div class="bg-slate-800/60 rounded px-3 py-2 border border-slate-700">
+              <p class="text-slate-300 text-xs font-medium">Enviado / Sent</p>
+              <p class="text-slate-600 text-xs">Número de destinatários</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-slate-600 text-xs border-t border-slate-700 pt-3">
+          ⚠ As colunas manuais (Copy, Categoria, Tipo da base) precisam ser preenchidas para que a ferramenta aprenda padrões reais de performance por tipo de e-mail e segmento.
+          Sem elas, apenas os benchmarks globais (abertura e CLTK médios) são atualizados.
+        </p>
+
       </div>
     </details>
 
