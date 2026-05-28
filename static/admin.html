@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cobli · Admin — Email Validator</title>
+<title>Admin — Email Validator</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { background:#0f172a; font-family: system-ui, sans-serif; }
@@ -23,7 +23,7 @@
     </a>
     <span class="text-slate-600">|</span>
     <span class="font-bold text-white">Painel Admin</span>
-    <span class="text-slate-500 text-sm">Email Validator · Cobli</span>
+    <span class="text-slate-500 text-sm">Email Validator</span>
   </div>
   <button onclick="logout()" class="text-sm text-slate-400 hover:text-white">Sair</button>
 </header>
@@ -105,6 +105,53 @@
     <button id="uploadBtn" onclick="uploadCSV()" disabled
       class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg px-6 py-3 transition">
       Importar dados
+    </button>
+  </div>
+
+  <!-- CONFIGURAÇÃO DE IA -->
+  <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+    <h2 class="text-lg font-bold text-white mb-1">Configuração de IA</h2>
+    <p class="text-slate-400 text-sm mb-5">
+      Conecte sua própria chave de API para obter sugestões em linguagem natural após cada análise.
+      Compatível com Anthropic (Claude), OpenAI (GPT) ou qualquer endpoint compatível com OpenAI.
+    </p>
+
+    <div id="aiStatus" class="hidden mb-4"></div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1">Provider</label>
+        <select id="aiProvider" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="toggleCustomUrl()">
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI (GPT)</option>
+          <option value="custom">Custom (OpenAI-compatible)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1">Modelo</label>
+        <input id="aiModel" type="text" placeholder="Ex: claude-haiku-4-5-20251001 ou gpt-4o-mini"
+          class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+    </div>
+
+    <div id="customUrlRow" class="hidden mb-4">
+      <label class="block text-sm font-medium text-slate-300 mb-1">Base URL (endpoint customizado)</label>
+      <input id="aiBaseUrl" type="text" placeholder="Ex: https://api.groq.com/openai/v1"
+        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </div>
+
+    <div class="mb-5">
+      <label class="block text-sm font-medium text-slate-300 mb-1">
+        API Key <span id="keyHint" class="text-slate-500 font-normal"></span>
+      </label>
+      <input id="aiKey" type="password" placeholder="Cole sua chave de API aqui"
+        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <p class="text-xs text-slate-500 mt-1">A chave é armazenada apenas no servidor local e nunca exposta ao frontend.</p>
+    </div>
+
+    <button onclick="saveAiConfig()"
+      class="bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-6 py-2.5 transition text-sm">
+      Salvar configuração
     </button>
   </div>
 
@@ -280,6 +327,55 @@
   }
 
   loadStats();
+  loadAiConfig();
+
+  async function loadAiConfig() {
+    try {
+      const res  = await fetch('/api/admin/ai-config');
+      const data = await res.json();
+      if (data.provider) document.getElementById('aiProvider').value = data.provider;
+      if (data.model)    document.getElementById('aiModel').value    = data.model;
+      if (data.base_url) document.getElementById('aiBaseUrl').value  = data.base_url;
+      if (data.has_key)  document.getElementById('keyHint').textContent = '(chave já configurada)';
+      toggleCustomUrl();
+    } catch(e) {}
+  }
+
+  function toggleCustomUrl() {
+    const v = document.getElementById('aiProvider').value;
+    document.getElementById('customUrlRow').classList.toggle('hidden', v !== 'custom');
+  }
+
+  async function saveAiConfig() {
+    const provider = document.getElementById('aiProvider').value;
+    const model    = document.getElementById('aiModel').value.trim();
+    const base_url = document.getElementById('aiBaseUrl').value.trim();
+    const api_key  = document.getElementById('aiKey').value.trim();
+    const status   = document.getElementById('aiStatus');
+    status.classList.add('hidden');
+
+    try {
+      const res  = await fetch('/api/admin/ai-config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({provider, model, base_url, api_key}),
+      });
+      const data = await res.json();
+      status.className = data.ok
+        ? 'bg-emerald-900/40 border border-emerald-700 text-emerald-300 rounded-lg px-4 py-3 text-sm mb-4'
+        : 'bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4';
+      status.textContent = data.message || data.error;
+      status.classList.remove('hidden');
+      if (data.ok) {
+        document.getElementById('aiKey').value = '';
+        document.getElementById('keyHint').textContent = '(chave já configurada)';
+      }
+    } catch(e) {
+      status.className = 'bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4';
+      status.textContent = 'Erro de conexão';
+      status.classList.remove('hidden');
+    }
+  }
 </script>
 </body>
 </html>

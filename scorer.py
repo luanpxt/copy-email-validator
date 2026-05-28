@@ -1,100 +1,128 @@
 """
-Motor de scoring de e-mails — Cobli Email Validator
-Baseado na análise de 2.013 e-mails HubSpot (2022–2026)
+Email Validator — Scoring Engine
+Generic email marketing scoring based on industry benchmarks.
+Calibrate with your own data by uploading a historical CSV.
 """
 
-import re
-import math
+import re, json, os
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BENCHMARKS HISTÓRICOS (extraídos da análise real)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Default benchmarks (industry averages) ────────────────────────────────────
 
 SEGMENT_BENCHMARKS = {
-    "Clientes":  {"abertura": 29.6, "cltk": 3.22, "label": "Clientes ativos"},
-    "MQL+":      {"abertura": 33.0, "cltk": 2.03, "label": "MQL+ (leads quentes)"},
-    "MQL-":      {"abertura": 28.9, "cltk": 1.32, "label": "MQL- (leads frios)"},
-    "Lost":      {"abertura": 17.9, "cltk": 0.97, "label": "Lost / Churn"},
-    "Prospects": {"abertura": 37.6, "cltk": 0.84, "label": "Prospects (novo)"},
-    "Geral":     {"abertura": 34.2, "cltk": 1.74, "label": "Base geral / Newsletter"},
+    "Clientes":  {"abertura": 27.0, "cltk": 3.00, "label": "Clientes / Ativos"},
+    "MQL+":      {"abertura": 30.0, "cltk": 2.00, "label": "MQL+ (leads quentes)"},
+    "MQL-":      {"abertura": 22.0, "cltk": 1.00, "label": "MQL- (leads frios)"},
+    "Lost":      {"abertura": 15.0, "cltk": 0.70, "label": "Lost / Churn"},
+    "Prospects": {"abertura": 32.0, "cltk": 0.80, "label": "Prospects"},
+    "Geral":     {"abertura": 25.0, "cltk": 1.50, "label": "Base geral / Newsletter"},
 }
 
 THEME_BENCHMARKS = {
-    "novidades_produto":   {"cltk": 4.42, "label": "Novidades do Painel / Produto"},
-    "custo_eficiencia":    {"cltk": 1.66, "label": "Custo / Eficiência / ROI"},
-    "cobli_cam":           {"cltk": 1.33, "label": "Cobli Cam"},
-    "logistica":           {"cltk": 1.29, "label": "Logística / Field / Rotas"},
-    "ia_tendencias":       {"cltk": 1.21, "label": "IA / Tendências / Tecnologia"},
-    "seguranca":           {"cltk": 1.20, "label": "Segurança / Maio Amarelo"},
-    "gestao_pessoas":      {"cltk": 0.93, "label": "Gestão de Pessoas / RH"},
-    "geral":               {"cltk": 1.50, "label": "Geral / Editorial"},
+    "product_news":   {"cltk": 4.00, "label": "Novidades de Produto / Features"},
+    "roi_efficiency": {"cltk": 2.50, "label": "ROI / Custo / Eficiência"},
+    "events":         {"cltk": 2.20, "label": "Eventos / Webinars"},
+    "security":       {"cltk": 1.80, "label": "Segurança / Compliance"},
+    "logistics":      {"cltk": 1.60, "label": "Logística / Operações"},
+    "trends_tech":    {"cltk": 1.30, "label": "Tendências / Tecnologia / IA"},
+    "people_hr":      {"cltk": 1.00, "label": "Pessoas / RH / Equipe"},
+    "general":        {"cltk": 1.50, "label": "Geral / Newsletter"},
 }
 
 CATEGORY_BENCHMARKS = {
-    "Agradecimento": {"cltk": 46.6, "abertura": 60.8},
-    "Nutricao":      {"cltk": 8.0,  "abertura": 40.0},
-    "Conversao":     {"cltk": 3.5,  "abertura": 30.0},
-    "Newsletter":    {"cltk": 1.74, "abertura": 34.2},
-    "Pre-vendas":    {"cltk": 5.0,  "abertura": 35.0},
+    "Agradecimento": {"cltk": 8.0,  "abertura": 50.0},
+    "Nutricao":      {"cltk": 2.5,  "abertura": 30.0},
+    "Conversao":     {"cltk": 3.5,  "abertura": 28.0},
+    "Newsletter":    {"cltk": 1.5,  "abertura": 25.0},
+    "Pre-vendas":    {"cltk": 5.0,  "abertura": 32.0},
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLASSIFICAÇÃO DE TEMA (pelo assunto)
-# ─────────────────────────────────────────────────────────────────────────────
+_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+
+
+def _load_custom_benchmarks() -> dict:
+    path = os.path.join(_DATA_DIR, "custom_benchmarks.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def get_effective_segment_benchmarks() -> dict:
+    """Merge default benchmarks with any per-segment custom data from uploads."""
+    custom = _load_custom_benchmarks()
+    if not custom.get("segments"):
+        return SEGMENT_BENCHMARKS
+    merged = {k: dict(v) for k, v in SEGMENT_BENCHMARKS.items()}
+    for seg, data in custom["segments"].items():
+        if seg in merged:
+            merged[seg].update({k: v for k, v in data.items() if k in ("abertura", "cltk")})
+    return merged
+
+
+# ── Theme classification ───────────────────────────────────────────────────────
 
 def classify_theme(subject: str, body: str = "") -> str:
     text = (subject + " " + body).lower()
 
-    if any(k in text for k in ["painel", "plataforma", "dashboard", "novidade no painel",
-                                "melhoria", "atualização", "lançamento", "funcionalidade",
-                                "nova feature", "novo recurso", "app do gestor", "melhoramos"]):
-        return "novidades_produto"
-    if any(k in text for k in ["custo", "combustível", "combustivel", "economia", "eficiência",
-                                "eficiencia", "roi", "lucro", "reduzir gastos", "economizar"]):
-        return "custo_eficiencia"
-    if any(k in text for k in ["cam", "câmera", "camera", "cobli cam", "câmera de ré"]):
-        return "cobli_cam"
-    if any(k in text for k in ["segurança", "seguranca", "acidente", "maio amarelo",
-                                "prevenção", "prevencao", "motorista", "risco", "fadiga"]):
-        return "seguranca"
-    if any(k in text for k in ["ia", "inteligência artificial", "inteligencia artificial",
+    if any(k in text for k in ["product", "feature", "release", "launch", "update",
+                                "new feature", "improvement", "dashboard", "platform",
+                                "painel", "plataforma", "novidade", "melhoria",
+                                "lançamento", "atualização", "nova feature", "melhoramos"]):
+        return "product_news"
+    if any(k in text for k in ["roi", "cost", "saving", "reduce cost", "efficiency",
+                                "revenue", "profit", "budget", "custo", "economia",
+                                "eficiência", "eficiencia", "combustível", "reduzir gastos"]):
+        return "roi_efficiency"
+    if any(k in text for k in ["event", "webinar", "conference", "workshop", "course",
+                                "training", "evento", "curso", "treinamento"]):
+        return "events"
+    if any(k in text for k in ["security", "compliance", "safety", "risk", "breach",
+                                "segurança", "seguranca", "compliance", "acidente",
+                                "prevenção", "prevencao", "risco"]):
+        return "security"
+    if any(k in text for k in ["logistics", "delivery", "shipping", "supply chain",
+                                "logística", "logistica", "entrega", "rota",
+                                "roteirização", "roteirizacao", "field", "operações"]):
+        return "logistics"
+    if any(k in text for k in ["ai", "artificial intelligence", "automation", "trend",
+                                "technology", "digital", "future", "inteligência artificial",
                                 "automação", "automacao", "tendência", "tendencia",
-                                "tecnologia", "digital", "futuro"]):
-        return "ia_tendencias"
-    if any(k in text for k in ["gestão de pessoa", "gestao de pessoa", "rh", "equipe",
-                                "time", "colaborador", "funcionário", "funcionario"]):
-        return "gestao_pessoas"
-    if any(k in text for k in ["logística", "logistica", "entrega", "field", "campo",
-                                "rota", "roteirização", "roteirizacao"]):
-        return "logistica"
-    return "geral"
+                                "tecnologia", "futuro"]):
+        return "trends_tech"
+    if any(k in text for k in ["people", "hr", "team", "employee", "staff", "culture",
+                                "pessoas", "equipe", "rh", "colaborador", "funcionário",
+                                "funcionario", "gestão de pessoa"]):
+        return "people_hr"
+    return "general"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SCORE DO ASSUNTO (0–30 pts)
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Subject scoring (0–30 pts) ─────────────────────────────────────────────────
 
 def score_subject(subject: str) -> dict:
-    s = subject.strip()
+    s  = subject.strip()
     sl = s.lower()
-    points = 0
+    points    = 0
     breakdown = []
 
-    # Keywords de produto de alto impacto
-    product_kws = ["painel", "novidade", "novidades", "melhoria", "melhorias",
+    # Product/feature keywords — highest-performing category in most B2B email programs
+    product_kws = ["product", "feature", "launch", "update", "new", "release", "improvement",
+                   "painel", "novidade", "novidades", "melhoria", "melhorias",
                    "lançamento", "lancamento", "atualização", "atualizacao",
-                   "app do gestor", "nova feature", "melhoramos", "implementamos"]
+                   "nova feature", "melhoramos", "implementamos"]
     if any(k in sl for k in product_kws):
         points += 10
-        breakdown.append({"type": "positive", "msg": "Menciona produto/painel diretamente (+10 pts) — padrão dos melhores CLTKs históricos"})
+        breakdown.append({"type": "positive", "msg": "Menciona produto/feature diretamente (+10 pts) — padrão dos maiores CLTKs em programas B2B"})
 
-    # Benefício concreto
+    # Concrete benefit verb
     benefit_kws = ["reduzir", "economizar", "aumentar", "melhorar", "otimizar",
-                   "evitar", "resolver", "facilitar", "transformar", "descobrir"]
+                   "evitar", "resolver", "facilitar", "transformar", "descobrir",
+                   "reduce", "save", "increase", "improve", "optimize", "solve"]
     if any(k in sl for k in benefit_kws):
         points += 6
         breakdown.append({"type": "positive", "msg": "Contém verbo de benefício concreto (+6 pts)"})
 
-    # Emoji
+    # Emoji usage
     emoji_count = len(re.findall(r'[\U00010000-\U0010ffff]|[☀-⟿]', s))
     if 1 <= emoji_count <= 2:
         points += 4
@@ -103,7 +131,7 @@ def score_subject(subject: str) -> dict:
         points -= 2
         breakdown.append({"type": "warning", "msg": f"{emoji_count} emojis — excesso pode prejudicar deliverability (-2 pts)"})
 
-    # Comprimento ideal
+    # Ideal length
     char_count = len(s)
     if 35 <= char_count <= 80:
         points += 5
@@ -117,24 +145,24 @@ def score_subject(subject: str) -> dict:
     else:
         breakdown.append({"type": "neutral", "msg": f"{char_count} caracteres — aceitável, mas o ideal é 35–80"})
 
-    # Personalização (Gestor, Você)
-    if re.search(r'\bgestor\b|\bvocê\b|\bseu\b|\bsua\b', sl):
+    # Direct/personalized language
+    if re.search(r'\bvocê\b|\byour\b|\byou\b|\bseu\b|\bsua\b', sl):
         points += 3
         breakdown.append({"type": "positive", "msg": "Usa linguagem direta/personalizada (+3 pts)"})
 
-    # Padrões que não funcionam
-    guia_pattern = re.search(r'\[guia\]|\[ebook\]|\[webinar\]|\[material\]', sl)
+    # Patterns that underperform
+    guia_pattern = re.search(r'\[guia\]|\[ebook\]|\[webinar\]|\[material\]|\[guide\]|\[report\]', sl)
     if guia_pattern:
         points -= 8
-        breakdown.append({"type": "negative", "msg": "Padrão [Guia]/[Ebook] — historicamente gera abertura alta mas CLTK muito baixo (-8 pts). Considere remover o prefixo."})
+        breakdown.append({"type": "negative", "msg": "Padrão [Guia]/[Ebook] — tende a gerar abertura alta mas CLTK muito baixo (-8 pts). Considere remover o prefixo."})
 
     vague_kws = ["você sabia", "voce sabia", "descubra como", "tudo sobre",
-                 "tendências de", "o futuro de", "entenda como a tecnologia"]
+                 "tendências de", "o futuro de", "did you know", "everything about"]
     if any(k in sl for k in vague_kws):
         points -= 5
         breakdown.append({"type": "negative", "msg": "Assunto vago/curiosidade sem especificidade (-5 pts) — promete mas não entrega contexto"})
 
-    # Caps excessivo
+    # Excessive caps
     upper_ratio = sum(1 for c in s if c.isupper()) / max(len(s), 1)
     if upper_ratio > 0.4:
         points -= 3
@@ -143,78 +171,86 @@ def score_subject(subject: str) -> dict:
     points = max(0, min(30, points))
     return {"points": points, "max": 30, "breakdown": breakdown}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SCORE DO TEMA (0–20 pts)
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Theme scoring (0–20 pts) ───────────────────────────────────────────────────
 
 def score_theme(theme_key: str) -> dict:
-    benchmark = THEME_BENCHMARKS.get(theme_key, THEME_BENCHMARKS["geral"])
-    max_cltk = 4.42  # novidades_produto
-    ratio = benchmark["cltk"] / max_cltk
-    points = round(ratio * 20)
+    benchmark = THEME_BENCHMARKS.get(theme_key, THEME_BENCHMARKS["general"])
+    max_cltk  = 4.0  # product_news
+    ratio     = benchmark["cltk"] / max_cltk
+    points    = round(ratio * 20)
     breakdown = []
 
-    if theme_key == "novidades_produto":
-        breakdown.append({"type": "positive", "msg": f"Tema de maior CLTK histórico (4,42%) — as 10 edições com maior engajamento são todas de produto (+{points} pts)"})
-    elif theme_key in ("ia_tendencias", "seguranca", "gestao_pessoas"):
-        breakdown.append({"type": "warning", "msg": f"Tema de CLTK moderado/baixo ({benchmark['cltk']}%). Considere ancorar em funcionalidade do produto para aumentar relevância (+{points} pts)"})
+    if theme_key == "product_news":
+        breakdown.append({"type": "positive", "msg": f"Tema de maior CLTK histórico em B2B ({benchmark['cltk']}%) — e-mails de produto lideram engajamento (+{points} pts)"})
+    elif theme_key in ("trends_tech", "people_hr"):
+        breakdown.append({"type": "warning", "msg": f"Tema de CLTK moderado/baixo ({benchmark['cltk']}%). Considere ancorar em resultado concreto ou feature do produto (+{points} pts)"})
     else:
-        breakdown.append({"type": "neutral", "msg": f"Tema com CLTK histórico de {benchmark['cltk']}% (+{points} pts)"})
+        breakdown.append({"type": "neutral", "msg": f"Tema com CLTK típico de {benchmark['cltk']}% em programas B2B (+{points} pts)"})
 
-    return {"points": points, "max": 20, "theme": theme_key,
-            "theme_label": benchmark["label"], "theme_cltk": benchmark["cltk"], "breakdown": breakdown}
+    return {
+        "points":      points,
+        "max":         20,
+        "theme":       theme_key,
+        "theme_label": benchmark["label"],
+        "theme_cltk":  benchmark["cltk"],
+        "breakdown":   breakdown,
+    }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SCORE DO SEGMENTO (0–20 pts)
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Segment scoring (0–20 pts) ────────────────────────────────────────────────
 
 def score_segment(segment: str, email_category: str) -> dict:
-    bench = SEGMENT_BENCHMARKS.get(segment, SEGMENT_BENCHMARKS["Geral"])
-    breakdown = []
-    points = 10  # base
+    benchmarks = get_effective_segment_benchmarks()
+    bench      = benchmarks.get(segment, SEGMENT_BENCHMARKS["Geral"])
+    breakdown  = []
+    points     = 10
 
     if segment == "Clientes":
         points = 18
-        breakdown.append({"type": "positive", "msg": "Clientes têm o melhor CLTK (3,22%) — este é o segmento ideal para newsletter e conteúdo de produto"})
+        breakdown.append({"type": "positive", "msg": f"Clientes têm o melhor CLTK ({bench['cltk']}%) — segmento ideal para newsletter e conteúdo de produto"})
     elif segment == "MQL+":
         points = 14
-        breakdown.append({"type": "positive", "msg": "MQL+ tem boa resposta (2,03% CLTK) — conteúdo pode acelerar conversão"})
+        breakdown.append({"type": "positive", "msg": f"MQL+ tem boa resposta ({bench['cltk']}% CLTK) — conteúdo pode acelerar conversão"})
     elif segment == "MQL-":
         points = 10
-        breakdown.append({"type": "neutral", "msg": "MQL- tem CLTK médio (1,32%) — conteúdo mais direto e com CTA único tende a performar melhor"})
+        breakdown.append({"type": "neutral", "msg": f"MQL- tem CLTK médio ({bench['cltk']}%) — conteúdo mais direto e com CTA único tende a performar melhor"})
     elif segment == "Lost":
         points = 7
-        breakdown.append({"type": "warning", "msg": "Lost tem abertura baixa (17,9%) e CLTK de 0,97% — recomendado fluxo de reativação específico, não newsletter padrão"})
+        breakdown.append({"type": "warning", "msg": f"Lost tem abertura baixa ({bench['abertura']}%) e CLTK de {bench['cltk']}% — recomendado fluxo de reativação específico"})
     elif segment == "Prospects":
         points = 5
-        breakdown.append({"type": "negative", "msg": "Prospects abrem (37,6%) mas não clicam (0,84% CLTK). Newsletter padrão não converte para esse público. Considere e-mail mais curto com 1 CTA direto."})
+        breakdown.append({"type": "negative", "msg": f"Prospects abrem ({bench['abertura']}%) mas não clicam ({bench['cltk']}% CLTK). E-mail mais curto com 1 CTA direto converte melhor nesse público."})
     else:
-        points = 10
-        breakdown.append({"type": "neutral", "msg": f"Base geral — CLTK histórico de {bench['cltk']}%"})
+        breakdown.append({"type": "neutral", "msg": f"Base geral — CLTK típico de {bench['cltk']}%"})
 
-    # Cruzamento categoria × segmento
+    # Category × segment cross-signals
     if email_category == "Conversao" and segment == "Prospects":
-        breakdown.append({"type": "warning", "msg": "E-mail de Conversão para Prospects: histórico mostra que plain text supera formato visual para esse público"})
+        breakdown.append({"type": "warning", "msg": "E-mail de Conversão para Prospects: plain text curto supera formato visual para esse público"})
     if email_category == "Newsletter" and segment == "Prospects":
         points -= 2
-        breakdown.append({"type": "negative", "msg": "Newsletter para Prospects: CLTK historicamente 0,84% — resultado muito abaixo dos outros segmentos"})
+        breakdown.append({"type": "negative", "msg": "Newsletter para Prospects: CLTK historicamente muito baixo — considere e-mail de conversão direto"})
 
     points = max(0, min(20, points))
-    return {"points": points, "max": 20, "breakdown": breakdown,
-            "benchmark_abertura": bench["abertura"], "benchmark_cltk": bench["cltk"]}
+    return {
+        "points":             points,
+        "max":                20,
+        "breakdown":          breakdown,
+        "benchmark_abertura": bench["abertura"],
+        "benchmark_cltk":     bench["cltk"],
+    }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SCORE DA COPY (0–30 pts)
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Copy scoring (0–30 pts) ───────────────────────────────────────────────────
 
 def score_copy(body: str, email_category: str, has_cta: bool, cta_count: int) -> dict:
-    points = 0
+    points    = 0
     breakdown = []
-    b = body.strip()
-    bl = b.lower()
+    b         = body.strip()
+    bl        = b.lower()
     word_count = len(b.split())
 
-    # CTA
+    # CTA presence
     if has_cta:
         points += 10
         breakdown.append({"type": "positive", "msg": "Tem CTA (call-to-action) (+10 pts)"})
@@ -226,13 +262,13 @@ def score_copy(body: str, email_category: str, has_cta: bool, cta_count: int) ->
     else:
         breakdown.append({"type": "negative", "msg": "Sem CTA identificado — e-mail sem ação definida tende a ter CLTK próximo de zero"})
 
-    # Comprimento da copy
+    # Copy length vs category
     if email_category in ("Conversao", "Pre-vendas"):
         if word_count <= 150:
             points += 6
-            breakdown.append({"type": "positive", "msg": f"{word_count} palavras — copy curta para Conversão (+6 pts). Dados mostram que plain text curto supera visual longo"})
+            breakdown.append({"type": "positive", "msg": f"{word_count} palavras — copy curta para Conversão (+6 pts). Plain text curto supera visual longo."})
         elif word_count > 300:
-            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — copy longa para e-mail de Conversão. Considere reduzir e focar no CTA"})
+            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — copy longa para e-mail de Conversão. Considere reduzir e focar no CTA."})
         else:
             points += 3
             breakdown.append({"type": "neutral", "msg": f"{word_count} palavras — comprimento aceitável"})
@@ -241,29 +277,30 @@ def score_copy(body: str, email_category: str, has_cta: bool, cta_count: int) ->
             points += 5
             breakdown.append({"type": "positive", "msg": f"{word_count} palavras — comprimento ideal para Nutrição (+5 pts)"})
         elif word_count > 600:
-            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — muito longo para e-mail. Considere resumir ou criar uma série"})
+            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — muito longo. Considere resumir ou criar uma série."})
         else:
             points += 3
 
-    # Abertura com dor/contexto
+    # Opening with pain/context
     first_sentence = b[:200].lower()
     pain_kws = ["gestor", "frota", "custo", "problema", "desafio", "dificuldade",
-                "você já", "voce ja", "quantas vezes", "imagine", "e se você"]
+                "você já", "voce ja", "quantas vezes", "imagine", "e se você",
+                "manager", "fleet", "challenge", "problem", "have you ever"]
     if any(k in first_sentence for k in pain_kws):
         points += 5
-        breakdown.append({"type": "positive", "msg": "Abertura contextualiza dor/cenário do gestor (+5 pts)"})
+        breakdown.append({"type": "positive", "msg": "Abertura contextualiza dor/cenário do leitor (+5 pts)"})
 
-    # Dados/números concretos
-    if re.search(r'\d+%|\d+x|\d+ vezes|r\$\s*\d+|\d+ km', bl):
+    # Concrete data/numbers
+    if re.search(r'\d+%|\d+x|\d+ vezes|r\$\s*\d+|\$\s*\d+|\d+ km|\d+\s*min', bl):
         points += 4
         breakdown.append({"type": "positive", "msg": "Usa dados ou números concretos (+4 pts) — aumenta credibilidade"})
 
-    # Personalização
-    if re.search(r'\{\{.*?\}\}|\[nome\]|\bgestor\b', bl):
+    # Personalization tokens
+    if re.search(r'\{\{.*?\}\}|\[nome\]|\[name\]|\bgestor\b|\bmanager\b', bl):
         points += 3
         breakdown.append({"type": "positive", "msg": "Tem token de personalização (+3 pts)"})
 
-    # Parágrafos curtos (heurística: muitas quebras de linha)
+    # Paragraph structure
     line_breaks = b.count("\n")
     if line_breaks >= 3 and word_count > 50:
         points += 3
@@ -273,7 +310,7 @@ def score_copy(body: str, email_category: str, has_cta: bool, cta_count: int) ->
 
     # Spam triggers
     spam_kws = ["grátis", "gratis", "clique aqui", "urgente!", "promoção exclusiva",
-                "oferta imperdível", "100% garantido"]
+                "oferta imperdível", "100% garantido", "free!", "click here", "act now"]
     found_spam = [k for k in spam_kws if k in bl]
     if found_spam:
         points -= 5
@@ -282,128 +319,110 @@ def score_copy(body: str, email_category: str, has_cta: bool, cta_count: int) ->
     points = max(0, min(30, points))
     return {"points": points, "max": 30, "word_count": word_count, "breakdown": breakdown}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ESTIMATIVAS DE PERFORMANCE
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Performance estimation ─────────────────────────────────────────────────────
 
 def estimate_performance(total_score: int, segment: str, theme_key: str, email_category: str) -> dict:
-    bench_seg = SEGMENT_BENCHMARKS.get(segment, SEGMENT_BENCHMARKS["Geral"])
-    bench_theme = THEME_BENCHMARKS.get(theme_key, THEME_BENCHMARKS["geral"])
+    benchmarks  = get_effective_segment_benchmarks()
+    bench_seg   = benchmarks.get(segment, SEGMENT_BENCHMARKS["Geral"])
+    bench_theme = THEME_BENCHMARKS.get(theme_key, THEME_BENCHMARKS["general"])
 
-    # Abertura: benchmark do segmento ± ajuste pelo score total
-    score_ratio = (total_score - 50) / 50  # -1 a +1
+    score_ratio  = (total_score - 50) / 50
     abertura_adj = bench_seg["abertura"] * (1 + score_ratio * 0.25)
-    abertura = round(max(5, min(65, abertura_adj)), 1)
+    abertura     = round(max(5, min(65, abertura_adj)), 1)
 
-    # CLTK: média ponderada entre benchmark de segmento e de tema, ajustada pelo score
     base_cltk = (bench_seg["cltk"] * 0.5 + bench_theme["cltk"] * 0.5)
-    cltk_adj = base_cltk * (1 + score_ratio * 0.4)
-    cltk = round(max(0.1, min(15, cltk_adj)), 2)
+    cltk_adj  = base_cltk * (1 + score_ratio * 0.4)
+    cltk      = round(max(0.1, min(15, cltk_adj)), 2)
 
-    # Taxa de clique = CLTK × abertura / 100
     taxa_clique = round(cltk * abertura / 100, 2)
 
     return {
-        "abertura_estimada": abertura,
-        "cltk_estimado": cltk,
+        "abertura_estimada":    abertura,
+        "cltk_estimado":        cltk,
         "taxa_clique_estimada": taxa_clique,
-        "benchmark_abertura": bench_seg["abertura"],
-        "benchmark_cltk": bench_seg["cltk"],
+        "benchmark_abertura":   bench_seg["abertura"],
+        "benchmark_cltk":       bench_seg["cltk"],
     }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SUGESTÕES BASEADAS EM REGRAS (fallback sem API)
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Rule-based suggestions ─────────────────────────────────────────────────────
 
 def generate_rule_suggestions(subject_result, theme_result, segment_result, copy_result,
                                segment, theme_key, email_category) -> list:
     suggestions = []
 
-    # Assunto
+    # Subject
     if subject_result["points"] < 15:
-        if theme_key == "ia_tendencias":
+        if theme_key == "trends_tech":
             suggestions.append({
-                "area": "Assunto",
-                "priority": "alta",
-                "suggestion": "Ancore IA/tendências em uma funcionalidade concreta do Painel Cobli. Ex: em vez de 'O futuro da gestão com IA', tente 'Como a IA do Painel Cobli já está reduzindo custo da sua frota'."
+                "area": "Assunto", "priority": "alta",
+                "suggestion": "Ancore IA/tendências em um resultado concreto. Ex: em vez de 'O futuro da gestão com IA', tente 'Como a IA já está reduzindo custo da sua operação'."
             })
-        elif theme_key == "seguranca":
+        elif theme_key == "security":
             suggestions.append({
-                "area": "Assunto",
-                "priority": "alta",
-                "suggestion": "Para segurança, mencione o benefício tangível: 'Reduza acidentes em X%' ou 'Seu painel Cobli agora alerta para fadiga do motorista'. Específico converte mais que genérico."
+                "area": "Assunto", "priority": "alta",
+                "suggestion": "Para segurança, mencione o benefício tangível: 'Reduza acidentes em X%' ou 'Seu painel agora alerta para fadiga do motorista'. Específico converte mais que genérico."
             })
         else:
             suggestions.append({
-                "area": "Assunto",
-                "priority": "alta",
-                "suggestion": "Adicione especificidade ao assunto. Os 10 e-mails com maior CLTK histórico mencionam diretamente 'Painel', 'novidade' ou 'melhoria'. Ex: 'Novidade no Painel: [funcionalidade] já disponível para você'."
+                "area": "Assunto", "priority": "alta",
+                "suggestion": "Adicione especificidade ao assunto. Os e-mails com maior CLTK em B2B mencionam diretamente produto, novidade ou melhoria. Ex: 'Novidade: [feature] já disponível para você'."
             })
 
-    has_guia = any(b["msg"].startswith("Padrão [Guia]") for b in subject_result["breakdown"])
-    if has_guia:
+    if any(b["msg"].startswith("Padrão [Guia]") for b in subject_result["breakdown"]):
         suggestions.append({
-            "area": "Assunto",
-            "priority": "alta",
-            "suggestion": "Remova o prefixo [Guia] ou [Ebook] do assunto. Esses padrões historicamente têm abertura alta mas CLTK muito baixo — o público abre mas não clica no conteúdo."
+            "area": "Assunto", "priority": "alta",
+            "suggestion": "Remova o prefixo [Guia] ou [Ebook] do assunto. Esse padrão tende a gerar abertura alta mas CLTK muito baixo — o público abre mas não clica."
         })
 
-    # Tema
-    if theme_key == "gestao_pessoas":
+    # Theme
+    if theme_key == "people_hr":
         suggestions.append({
-            "area": "Tema",
-            "priority": "média",
-            "suggestion": "Gestão de pessoas tem o menor CLTK histórico (0,93%). Considere enquadrar o conteúdo pela lente do gestor de frota: 'Como treinar motoristas usando dados do Painel' performa melhor que conteúdo genérico de RH."
+            "area": "Tema", "priority": "média",
+            "suggestion": "Pessoas/RH tem o menor CLTK típico. Considere enquadrar o conteúdo pela lente do gestor de operações: 'Como treinar sua equipe usando dados do painel' performa melhor que conteúdo genérico de RH."
         })
-    elif theme_key == "ia_tendencias":
+    elif theme_key == "trends_tech":
         suggestions.append({
-            "area": "Tema",
-            "priority": "média",
-            "suggestion": "IA/Tendências gera abertura alta (36,3%) mas CLTK baixo (1,21%). O público se interessa pelo tema mas não age. Combine com novidade de produto: 'Veja como a IA do Cobli já funciona no seu Painel'."
+            "area": "Tema", "priority": "média",
+            "suggestion": "IA/Tendências gera abertura alta mas CLTK baixo. O público se interessa mas não age. Combine com novidade de produto: 'Veja como a IA já funciona no seu painel hoje'."
         })
 
-    # Segmento
+    # Segment
     if segment == "Prospects":
         suggestions.append({
-            "area": "Segmento",
-            "priority": "alta",
-            "suggestion": "Para Prospects, a newsletter padrão tem CLTK histórico de apenas 0,84%. Considere um e-mail mais curto (< 150 palavras), com 1 CTA único e direto para demo ou trial, ao invés de newsletter editorial."
+            "area": "Segmento", "priority": "alta",
+            "suggestion": "Para Prospects, newsletter padrão tem CLTK muito baixo. Considere e-mail mais curto (< 150 palavras) com 1 CTA único e direto para demo ou trial."
         })
     elif segment == "Lost":
         suggestions.append({
-            "area": "Segmento",
-            "priority": "média",
-            "suggestion": "Para Lost, foque em reativação pontual — uma oferta específica ou novidade de produto que resolva o motivo do churn. Newsletter padrão tem baixa adesão nesse segmento (abertura 17,9%)."
+            "area": "Segmento", "priority": "média",
+            "suggestion": "Para Lost, foque em reativação pontual — uma oferta específica ou novidade de produto que resolva o motivo do churn. Newsletter padrão tem baixa adesão nesse segmento."
         })
 
     # Copy
-    no_cta = not any(b["msg"].startswith("Tem CTA") for b in copy_result["breakdown"])
-    if no_cta:
+    if not any(b["msg"].startswith("Tem CTA") for b in copy_result["breakdown"]):
         suggestions.append({
-            "area": "Copy",
-            "priority": "alta",
-            "suggestion": "Adicione um CTA claro. Sem CTA, o CLTK tende a zero. Para Conversão: botão direto ('Ver demonstração'). Para Nutrição: link contextual no texto ('veja como funciona no Painel')."
+            "area": "Copy", "priority": "alta",
+            "suggestion": "Adicione um CTA claro. Sem CTA, o CLTK tende a zero. Para Conversão: botão direto ('Ver demonstração'). Para Nutrição: link contextual no texto ('veja como funciona')."
         })
 
     if copy_result["word_count"] > 400 and email_category == "Conversao":
         suggestions.append({
-            "area": "Copy",
-            "priority": "média",
-            "suggestion": f"Copy com {copy_result['word_count']} palavras para e-mail de Conversão. Os dados mostram que plain text curto (< 200 palavras) supera formato longo para Conversão. Corte ao essencial e confie no CTA."
+            "area": "Copy", "priority": "média",
+            "suggestion": f"Copy com {copy_result['word_count']} palavras para e-mail de Conversão. Plain text curto (< 200 palavras) supera formato longo para Conversão. Corte ao essencial e confie no CTA."
         })
 
     if not suggestions:
         suggestions.append({
-            "area": "Geral",
-            "priority": "baixa",
-            "suggestion": "E-mail bem estruturado. Para garantir o topo do ranking, verifique se o assunto menciona uma novidade ou melhoria concreta do produto — esse é o padrão consistente nos e-mails com maior CLTK histórico."
+            "area": "Geral", "priority": "baixa",
+            "suggestion": "E-mail bem estruturado. Para garantir o topo do ranking, verifique se o assunto menciona uma novidade ou melhoria concreta do produto — esse é o padrão consistente nos e-mails com maior CLTK em B2B."
         })
 
     return suggestions
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FUNÇÃO PRINCIPAL
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Main function ──────────────────────────────────────────────────────────────
 
 def score_email(subject: str, body: str, segment: str, email_category: str,
                 has_cta: bool = True, cta_count: int = 1,
@@ -416,36 +435,30 @@ def score_email(subject: str, body: str, segment: str, email_category: str,
     s_segment = score_segment(segment, email_category)
     s_copy    = score_copy(body, email_category, has_cta, cta_count)
 
-    total = s_subject["points"] + s_theme["points"] + s_segment["points"] + s_copy["points"]
-    total = min(100, total)
+    total = min(100, s_subject["points"] + s_theme["points"] + s_segment["points"] + s_copy["points"])
 
     if total >= 80:
-        rating = "Excelente"
-        rating_color = "green"
-        rating_desc = "E-mail com alto potencial de performance para a base Cobli."
+        rating, rating_color = "Excelente", "green"
+        rating_desc = "E-mail com alto potencial de engajamento."
     elif total >= 60:
-        rating = "Bom"
-        rating_color = "blue"
+        rating, rating_color = "Bom", "blue"
         rating_desc = "E-mail sólido com espaço para melhorias pontuais."
     elif total >= 40:
-        rating = "Regular"
-        rating_color = "yellow"
+        rating, rating_color = "Regular", "yellow"
         rating_desc = "Alguns ajustes podem aumentar significativamente o engajamento."
     else:
-        rating = "Precisa de revisão"
-        rating_color = "red"
+        rating, rating_color = "Precisa de revisão", "red"
         rating_desc = "Pontos críticos identificados — recomendado revisar antes de enviar."
 
     performance = estimate_performance(total, segment, theme_key, email_category)
     suggestions = generate_rule_suggestions(s_subject, s_theme, s_segment, s_copy,
                                             segment, theme_key, email_category)
 
-    # Preheader analysis
-    preheader_feedback = None
+    # Preheader check
     if not preheader.strip():
         preheader_feedback = {
             "type": "warning",
-            "msg": "Pré-header não informado. O pré-header aparece logo após o assunto na caixa de entrada e aumenta a taxa de abertura em até 10%. Recomendado complementar o assunto com 40–90 caracteres."
+            "msg": "Pré-header não informado. Aparece após o assunto na caixa de entrada e pode aumentar a abertura em até 10%. Recomendado: 40–90 caracteres complementando o assunto."
         }
     elif len(preheader) > 90:
         preheader_feedback = {
@@ -458,22 +471,24 @@ def score_email(subject: str, body: str, segment: str, email_category: str,
             "msg": f"Pré-header presente ({len(preheader)} chars) — boa prática."
         }
 
+    benchmarks = get_effective_segment_benchmarks()
+
     return {
-        "total_score": total,
-        "rating": rating,
-        "rating_color": rating_color,
-        "rating_desc": rating_desc,
+        "total_score":   total,
+        "rating":        rating,
+        "rating_color":  rating_color,
+        "rating_desc":   rating_desc,
         "dimensions": {
-            "subject":  s_subject,
-            "theme":    s_theme,
-            "segment":  s_segment,
-            "copy":     s_copy,
+            "subject": s_subject,
+            "theme":   s_theme,
+            "segment": s_segment,
+            "copy":    s_copy,
         },
-        "theme_key":   theme_key,
-        "theme_label": s_theme["theme_label"],
-        "theme_cltk":  s_theme["theme_cltk"],
-        "performance": performance,
-        "suggestions": suggestions,
+        "theme_key":          theme_key,
+        "theme_label":        s_theme["theme_label"],
+        "theme_cltk":         s_theme["theme_cltk"],
+        "performance":        performance,
+        "suggestions":        suggestions,
         "preheader_feedback": preheader_feedback,
-        "segment_label": SEGMENT_BENCHMARKS.get(segment, {}).get("label", segment),
+        "segment_label":      benchmarks.get(segment, {}).get("label", segment),
     }

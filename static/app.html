@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cobli · Email Validator</title>
+<title>Email Validator</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { background:#0f172a; font-family: system-ui, sans-serif; }
@@ -31,7 +31,6 @@
       </svg>
     </div>
     <span class="font-bold text-white">Email Validator</span>
-    <span class="text-slate-500 text-sm">Cobli · Interno</span>
   </div>
   <div class="flex items-center gap-3">
     <a href="/admin" class="text-sm text-slate-400 hover:text-white transition px-3 py-1.5 rounded-lg hover:bg-slate-800">⚙ Admin</a>
@@ -221,12 +220,12 @@
         <div id="suggestions" class="space-y-3"></div>
       </div>
 
-      <!-- Claude suggestions (if available) -->
-      <div id="claudeBox" class="hidden bg-slate-800 rounded-2xl p-5 border border-blue-800 mb-4">
+      <!-- AI suggestions (if configured) -->
+      <div id="aiBox" class="hidden bg-slate-800 rounded-2xl p-5 border border-blue-800 mb-4">
         <div class="flex items-center gap-2 mb-3">
-          <span class="text-blue-400 text-sm font-semibold">✦ Análise aprofundada (Claude AI)</span>
+          <span id="aiBoxLabel" class="text-blue-400 text-sm font-semibold">✦ Análise aprofundada (IA)</span>
         </div>
-        <div id="claudeSuggestions" class="text-sm text-slate-300 whitespace-pre-line leading-relaxed"></div>
+        <div id="aiSuggestions" class="text-sm text-slate-300 whitespace-pre-line leading-relaxed"></div>
       </div>
 
       <!-- Dimension breakdown accordion -->
@@ -422,12 +421,14 @@
         </div>
       </div>`).join('');
 
-    // Claude
-    if (d.claude_suggestions) {
-      document.getElementById('claudeBox').classList.remove('hidden');
-      document.getElementById('claudeSuggestions').textContent = d.claude_suggestions;
+    // AI suggestions
+    if (d.ai_suggestions) {
+      const providerLabel = { anthropic: 'Claude (Anthropic)', openai: 'GPT (OpenAI)', custom: 'IA (Custom)' };
+      document.getElementById('aiBoxLabel').textContent = '✦ Análise aprofundada — ' + (providerLabel[d.ai_provider] || 'IA');
+      document.getElementById('aiBox').classList.remove('hidden');
+      document.getElementById('aiSuggestions').textContent = d.ai_suggestions;
     } else {
-      document.getElementById('claudeBox').classList.add('hidden');
+      document.getElementById('aiBox').classList.add('hidden');
     }
 
     // Breakdown detail

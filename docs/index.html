@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Validator — Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#0f172a; font-family:system-ui,sans-serif; }
+  .score-ring { transition:stroke-dashoffset 0.8s ease; }
+  .tag-green  { background:#14532d; color:#86efac; }
+  .tag-blue   { background:#1e3a5f; color:#93c5fd; }
+  .tag-yellow { background:#713f12; color:#fde68a; }
+  .tag-red    { background:#7f1d1d; color:#fca5a5; }
+  .dim-bar    { transition:width 0.6s ease; }
+  .fade-in    { animation:fadeIn 0.3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:#1e293b}
+  ::-webkit-scrollbar-thumb{background:#475569;border-radius:3px}
+</style>
+</head>
+<body class="min-h-screen text-slate-200">
+
+<!-- DEMO BANNER -->
+<div class="bg-blue-900/40 border-b border-blue-700/50 px-6 py-2.5 flex items-center justify-between gap-4">
+  <span class="text-blue-300 text-sm">
+    ✦ Demo interativo — motor de scoring rodando no browser, sem servidor.
+    Para IA e calibração automática com seus dados,
+    <a href="https://github.com/luanpxt/copy-email-validator" target="_blank" class="underline hover:text-white">hospede sua própria instância</a>.
+  </span>
+  <a href="https://github.com/luanpxt/copy-email-validator" target="_blank"
+     class="flex-shrink-0 text-blue-400 hover:text-white text-xs border border-blue-600/50 px-3 py-1 rounded-full transition">
+    ★ GitHub
+  </a>
+</div>
+
+<!-- HEADER -->
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+      <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    <span class="font-bold text-white">Email Validator</span>
+    <span class="bg-slate-700 text-slate-300 text-xs px-2 py-0.5 rounded-full">demo</span>
+  </div>
+  <button onclick="loadExample()"
+    class="text-sm text-blue-400 hover:text-blue-300 border border-blue-600/40 px-3 py-1.5 rounded-lg transition">
+    Carregar exemplo
+  </button>
+</header>
+
+<div class="max-w-6xl mx-auto px-4 py-8">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+    <!-- FORM -->
+    <div>
+      <h2 class="text-xl font-bold text-white mb-1">Validar e-mail</h2>
+      <p class="text-slate-400 text-sm mb-6">Preencha os campos e veja o score instantaneamente.</p>
+
+      <form id="form" onsubmit="runValidation(event)" class="space-y-4">
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">
+            Assunto <span class="text-red-400">*</span>
+          </label>
+          <input id="subject" type="text"
+            placeholder="Ex: Nova funcionalidade no painel: relatório de rotas 🗺"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            oninput="updateCharCount(this,'subjectCount',80)">
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-slate-500">Ideal: 35–80 caracteres</span>
+            <span id="subjectCount" class="text-xs text-slate-500">0 / 80</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">
+            Pré-header <span class="text-slate-500 font-normal">(texto após o assunto na caixa de entrada)</span>
+          </label>
+          <input id="preheader" type="text"
+            placeholder="Ex: Reduza o tempo de entrega com visibilidade em tempo real"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            oninput="updateCharCount(this,'preCount',90)">
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-slate-500">Ideal: até 90 caracteres</span>
+            <span id="preCount" class="text-xs text-slate-500">0 / 90</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Segmento</label>
+            <select id="segment" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Clientes">Clientes / Ativos</option>
+              <option value="MQL+">MQL+ (leads quentes)</option>
+              <option value="MQL-">MQL- (leads frios)</option>
+              <option value="Prospects">Prospects</option>
+              <option value="Lost">Lost / Churn</option>
+              <option value="Geral" selected>Base geral</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Objetivo</label>
+            <select id="category" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Newsletter">Newsletter</option>
+              <option value="Nutricao">Nutrição</option>
+              <option value="Conversao">Conversão</option>
+              <option value="Pre-vendas">Pré-vendas</option>
+              <option value="Agradecimento">Agradecimento / Entrega</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Tem CTA?</label>
+            <select id="has_cta" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Quantos CTAs?</label>
+            <select id="cta_count" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="1">1 (recomendado)</option>
+              <option value="2">2</option>
+              <option value="3">3 ou mais</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">Copy do e-mail</label>
+          <textarea id="body" rows="7"
+            placeholder="Cole aqui o texto do e-mail (sem HTML)."
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            oninput="updateCharCount(this,'bodyCount',99999)"></textarea>
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-slate-500">Cole o texto puro (sem HTML)</span>
+            <span id="bodyCount" class="text-xs text-slate-500">0 palavras</span>
+          </div>
+        </div>
+
+        <button type="submit"
+          class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-4 py-3 transition flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Analisar e-mail
+        </button>
+      </form>
+
+      <!-- CALIBRATE -->
+      <details class="mt-6 bg-slate-800 rounded-xl border border-slate-700">
+        <summary class="px-5 py-3 cursor-pointer text-sm text-slate-400 hover:text-white flex items-center gap-2 select-none">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+          </svg>
+          Calibrar benchmarks da sua base
+        </summary>
+        <div class="px-5 pb-5 pt-3 space-y-5">
+          <p class="text-xs text-slate-500 leading-relaxed">
+            Informe as médias reais da sua base para estimativas mais precisas.
+            Na versão self-hosted, suba um CSV e a calibração é automática por segmento.
+          </p>
+          <div>
+            <div class="flex justify-between mb-2">
+              <label class="text-sm text-slate-300">Taxa de abertura média da sua lista</label>
+              <span id="abLabel" class="text-sm font-mono text-blue-400">25%</span>
+            </div>
+            <input type="range" id="customAb" min="5" max="60" value="25" step="0.5"
+              class="w-full accent-blue-500 cursor-pointer"
+              oninput="updateBenchLabel('customAb','abLabel','%')">
+            <div class="flex justify-between text-xs text-slate-600 mt-1"><span>5%</span><span>60%</span></div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-2">
+              <label class="text-sm text-slate-300">CLTK médio da sua lista</label>
+              <span id="cltkLabel" class="text-sm font-mono text-emerald-400">1.5%</span>
+            </div>
+            <input type="range" id="customCltk" min="0.1" max="10" value="1.5" step="0.1"
+              class="w-full accent-emerald-500 cursor-pointer"
+              oninput="updateBenchLabel('customCltk','cltkLabel','%')">
+            <div class="flex justify-between text-xs text-slate-600 mt-1"><span>0.1%</span><span>10%</span></div>
+          </div>
+          <button onclick="resetBenchmarks()"
+            class="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-2">
+            Resetar para padrões do setor
+          </button>
+        </div>
+      </details>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results" class="hidden fade-in">
+
+      <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 mb-4">
+        <div class="flex items-center gap-6">
+          <div class="relative flex-shrink-0">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="#1e293b" stroke-width="10"/>
+              <circle id="scoreCircle" cx="50" cy="50" r="42" fill="none" stroke="#3b82f6"
+                stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="264" stroke-dashoffset="264"
+                transform="rotate(-90 50 50)" class="score-ring"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="scoreNum" class="text-2xl font-bold text-white">0</span>
+              <span class="text-xs text-slate-400">/ 100</span>
+            </div>
+          </div>
+          <div class="flex-1">
+            <div id="ratingBadge" class="inline-block text-sm font-bold px-3 py-1 rounded-full mb-2"></div>
+            <p id="ratingDesc" class="text-slate-300 text-sm"></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span id="themeTag"   class="text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-300"></span>
+              <span id="segmentTag" class="text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-300"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+          <div id="estAbertura" class="text-2xl font-bold text-blue-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Abertura estimada</div>
+          <div id="benchAbertura" class="text-xs text-slate-500 mt-0.5"></div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+          <div id="estCltk" class="text-2xl font-bold text-emerald-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">CLTK estimado</div>
+          <div id="benchCltk" class="text-xs text-slate-500 mt-0.5"></div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+          <div id="estClique" class="text-2xl font-bold text-violet-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Clique estimado</div>
+          <div class="text-xs text-slate-500 mt-0.5">sobre lista</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 mb-4">
+        <h3 class="text-sm font-semibold text-slate-300 mb-4">Detalhamento do score</h3>
+        <div id="dimensions" class="space-y-3"></div>
+      </div>
+
+      <div id="preheaderBox" class="hidden rounded-xl p-4 border mb-4">
+        <div class="flex items-start gap-3">
+          <span id="preheaderIcon" class="text-lg flex-shrink-0"></span>
+          <p id="preheaderMsg" class="text-sm text-slate-300"></p>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 mb-4">
+        <h3 class="text-sm font-semibold text-slate-300 mb-3">Sugestões de melhoria</h3>
+        <div id="suggestions" class="space-y-3"></div>
+      </div>
+
+      <details class="bg-slate-800 rounded-xl border border-slate-700 mb-4">
+        <summary class="px-5 py-3 cursor-pointer text-sm text-slate-400 hover:text-white select-none">
+          Ver detalhes de cada dimensão
+        </summary>
+        <div id="breakdownDetail" class="px-5 pb-4 space-y-4 text-sm"></div>
+      </details>
+
+    </div>
+
+    <!-- EMPTY STATE -->
+    <div id="emptyState" class="hidden lg:flex flex-col items-center justify-center text-center py-20">
+      <div class="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 border border-slate-700">
+        <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+      </div>
+      <p class="text-slate-500 text-sm">Preencha o formulário ao lado<br>para ver a análise do e-mail</p>
+      <button onclick="loadExample()" class="mt-4 text-sm text-blue-400 hover:text-blue-300 transition underline underline-offset-2">
+        ou carregue um exemplo
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="border-t border-slate-800 px-6 py-8 mt-4">
+  <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-500">
+    <p>Email Validator — open source, self-hostable. Motor de scoring baseado em benchmarks de email marketing B2B.</p>
+    <a href="https://github.com/luanpxt/copy-email-validator" target="_blank"
+       class="text-slate-400 hover:text-white transition flex items-center gap-1.5">
+      Ver código no GitHub →
+    </a>
+  </div>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// BENCHMARKS
+// ═══════════════════════════════════════════════════════════════════
+const DEFAULT_SEGMENTS = {
+  Clientes:  {abertura:27.0, cltk:3.00, label:'Clientes / Ativos'},
+  'MQL+':    {abertura:30.0, cltk:2.00, label:'MQL+ (leads quentes)'},
+  'MQL-':    {abertura:22.0, cltk:1.00, label:'MQL- (leads frios)'},
+  Lost:      {abertura:15.0, cltk:0.70, label:'Lost / Churn'},
+  Prospects: {abertura:32.0, cltk:0.80, label:'Prospects'},
+  Geral:     {abertura:25.0, cltk:1.50, label:'Base geral / Newsletter'},
+};
+const THEMES = {
+  product_news:   {cltk:4.00, label:'Novidades de Produto / Features'},
+  roi_efficiency: {cltk:2.50, label:'ROI / Custo / Eficiência'},
+  events:         {cltk:2.20, label:'Eventos / Webinars'},
+  security:       {cltk:1.80, label:'Segurança / Compliance'},
+  logistics:      {cltk:1.60, label:'Logística / Operações'},
+  trends_tech:    {cltk:1.30, label:'Tendências / Tecnologia / IA'},
+  people_hr:      {cltk:1.00, label:'Pessoas / RH / Equipe'},
+  general:        {cltk:1.50, label:'Geral / Newsletter'},
+};
+
+let customBench = {abertura:25.0, cltk:1.5};
+
+function getSegments() {
+  const base   = DEFAULT_SEGMENTS.Geral;
+  const abR    = customBench.abertura / base.abertura;
+  const cltkR  = customBench.cltk     / base.cltk;
+  const result = {};
+  for (const [k, v] of Object.entries(DEFAULT_SEGMENTS)) {
+    result[k] = {
+      ...v,
+      abertura: Math.round(v.abertura * abR * 10) / 10,
+      cltk:     Math.round(v.cltk     * cltkR * 100) / 100,
+    };
+  }
+  return result;
+}
+
+function updateBenchLabel(sliderId, labelId, suffix) {
+  const v = parseFloat(document.getElementById(sliderId).value);
+  document.getElementById(labelId).textContent = v + suffix;
+  if (sliderId === 'customAb')   customBench.abertura = v;
+  if (sliderId === 'customCltk') customBench.cltk     = v;
+}
+function resetBenchmarks() {
+  customBench = {abertura:25.0, cltk:1.5};
+  document.getElementById('customAb').value    = 25;
+  document.getElementById('customCltk').value  = 1.5;
+  document.getElementById('abLabel').textContent   = '25%';
+  document.getElementById('cltkLabel').textContent = '1.5%';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCORING ENGINE
+// ═══════════════════════════════════════════════════════════════════
+function classifyTheme(subject, body) {
+  const t = (subject + ' ' + body).toLowerCase();
+  if (/product|feature|release|launch|update|improvement|dashboard|platform|painel|plataforma|novidade|melhoria|lançamento|atualização|melhoramos/.test(t)) return 'product_news';
+  if (/\broi\b|saving|efficiency|revenue|budget|custo|economia|eficiência|eficiencia|combustível|reduzir gastos/.test(t)) return 'roi_efficiency';
+  if (/webinar|conference|workshop|course|training|evento|curso|treinamento/.test(t)) return 'events';
+  if (/security|compliance|safety|\brisk\b|breach|segurança|seguranca|acidente|prevenção|prevencao/.test(t)) return 'security';
+  if (/logistics|delivery|shipping|logística|logistica|entrega|\brota\b|roteirização|field/.test(t)) return 'logistics';
+  if (/\bai\b|artificial intelligence|automation|technology|digital|future|inteligência artificial|automação|tendência|tecnologia/.test(t)) return 'trends_tech';
+  if (/people|\bhr\b|\bteam\b|employee|staff|culture|pessoas|equipe|colaborador|funcionário/.test(t)) return 'people_hr';
+  return 'general';
+}
+
+function scoreSubject(subject) {
+  const s = subject.trim(), sl = s.toLowerCase();
+  let pts = 0; const bd = [];
+  if (/product|feature|launch|update|improvement|painel|novidade|melhoria|lançamento|atualização|melhoramos/.test(sl)) { pts+=10; bd.push({type:'positive',msg:'Menciona produto/feature diretamente (+10 pts) — padrão dos maiores CLTKs em B2B'}); }
+  if (/reduzir|economizar|aumentar|melhorar|otimizar|evitar|resolver|facilitar|reduce|save|increase|improve|solve/.test(sl)) { pts+=6; bd.push({type:'positive',msg:'Contém verbo de benefício concreto (+6 pts)'}); }
+  const emojis = (s.match(/\p{Emoji_Presentation}/gu)||[]).length;
+  if (emojis>=1&&emojis<=2) { pts+=4; bd.push({type:'positive',msg:`${emojis} emoji(s) — uso adequado (+4 pts)`}); }
+  else if (emojis>3) { pts-=2; bd.push({type:'warning',msg:`${emojis} emojis — excesso pode prejudicar deliverability (-2 pts)`}); }
+  const cc = s.length;
+  if (cc>=35&&cc<=80) { pts+=5; bd.push({type:'positive',msg:`${cc} caracteres — comprimento ideal 35–80 (+5 pts)`}); }
+  else if (cc<20)     { pts-=3; bd.push({type:'negative',msg:`Muito curto (${cc} chars) — pouca informação (-3 pts)`}); }
+  else if (cc>100)    { pts-=4; bd.push({type:'negative',msg:`Muito longo (${cc} chars) — pode ser truncado em mobile (-4 pts)`}); }
+  else                { bd.push({type:'neutral',msg:`${cc} caracteres — aceitável, mas o ideal é 35–80`}); }
+  if (/\bvocê\b|\byour\b|\byou\b|\bseu\b|\bsua\b/.test(sl)) { pts+=3; bd.push({type:'positive',msg:'Usa linguagem direta/personalizada (+3 pts)'}); }
+  if (/\[guia\]|\[ebook\]|\[webinar\]|\[material\]|\[guide\]|\[report\]/.test(sl)) { pts-=8; bd.push({type:'negative',msg:'Padrão [Guia]/[Ebook] — tende a gerar CLTK muito baixo (-8 pts). Considere remover o prefixo.'}); }
+  if (/você sabia|voce sabia|descubra como|tudo sobre|tendências de|o futuro de|did you know/.test(sl)) { pts-=5; bd.push({type:'negative',msg:'Assunto vago/curiosidade sem especificidade (-5 pts)'}); }
+  const upperR = (s.match(/[A-Z]/g)||[]).length / Math.max(s.length,1);
+  if (upperR>0.4) { pts-=3; bd.push({type:'warning',msg:'Excesso de letras maiúsculas — pode ativar filtros de spam (-3 pts)'}); }
+  return {points:Math.max(0,Math.min(30,pts)), max:30, breakdown:bd};
+}
+
+function scoreTheme(key) {
+  const b = THEMES[key]||THEMES.general;
+  const pts = Math.round(b.cltk/4.0*20);
+  const bd  = [];
+  if (key==='product_news') bd.push({type:'positive',msg:`Tema de maior CLTK em B2B (${b.cltk}%) — e-mails de produto lideram engajamento (+${pts} pts)`});
+  else if (['trends_tech','people_hr'].includes(key)) bd.push({type:'warning',msg:`Tema de CLTK moderado/baixo (${b.cltk}%). Ancore em resultado concreto (+${pts} pts)`});
+  else bd.push({type:'neutral',msg:`Tema com CLTK típico de ${b.cltk}% em B2B (+${pts} pts)`});
+  return {points:pts, max:20, theme:key, theme_label:b.label, theme_cltk:b.cltk, breakdown:bd};
+}
+
+function scoreSegment(segment, cat) {
+  const segs = getSegments();
+  const b    = segs[segment]||segs.Geral;
+  const bd   = []; let pts = 10;
+  if (segment==='Clientes')  { pts=18; bd.push({type:'positive',msg:`Clientes têm o melhor CLTK (${b.cltk}%) — segmento ideal para newsletter e produto`}); }
+  else if (segment==='MQL+') { pts=14; bd.push({type:'positive',msg:`MQL+ tem boa resposta (${b.cltk}% CLTK) — conteúdo pode acelerar conversão`}); }
+  else if (segment==='MQL-') { pts=10; bd.push({type:'neutral', msg:`MQL- tem CLTK médio (${b.cltk}%) — CTA único e conteúdo direto performam melhor`}); }
+  else if (segment==='Lost') { pts= 7; bd.push({type:'warning', msg:`Lost: abertura baixa (${b.abertura}%), CLTK de ${b.cltk}% — recomendado fluxo de reativação`}); }
+  else if (segment==='Prospects') { pts=5; bd.push({type:'negative',msg:`Prospects abrem (${b.abertura}%) mas não clicam (${b.cltk}% CLTK). E-mail curto com 1 CTA direto converte melhor.`}); }
+  else { bd.push({type:'neutral',msg:`Base geral — CLTK típico de ${b.cltk}%`}); }
+  if (cat==='Conversao'&&segment==='Prospects') bd.push({type:'warning',msg:'Conversão para Prospects: plain text curto supera formato visual'});
+  if (cat==='Newsletter'&&segment==='Prospects') { pts-=2; bd.push({type:'negative',msg:'Newsletter para Prospects: CLTK historicamente muito baixo — considere e-mail de conversão direto'}); }
+  return {points:Math.max(0,Math.min(20,pts)), max:20, breakdown:bd, benchmark_abertura:b.abertura, benchmark_cltk:b.cltk};
+}
+
+function scoreCopy(body, cat, hasCta, ctaCount) {
+  let pts=0; const bd=[]; const b=body.trim(), bl=b.toLowerCase();
+  const wc = b.split(/\s+/).filter(w=>w).length;
+  if (hasCta) {
+    pts+=10; bd.push({type:'positive',msg:'Tem CTA (call-to-action) (+10 pts)'});
+    if (ctaCount===1) { pts+=5; bd.push({type:'positive',msg:'CTA único — foco claro aumenta taxa de clique (+5 pts)'}); }
+    else if (ctaCount>2) bd.push({type:'warning',msg:`${ctaCount} CTAs — múltiplos CTAs dividem atenção. Considere deixar apenas 1 primário`});
+  } else { bd.push({type:'negative',msg:'Sem CTA — CLTK tende a zero sem ação definida'}); }
+  if (['Conversao','Pre-vendas'].includes(cat)) {
+    if (wc<=150) { pts+=6; bd.push({type:'positive',msg:`${wc} palavras — copy curta para Conversão (+6 pts)`}); }
+    else if (wc>300) bd.push({type:'warning',msg:`${wc} palavras — muito longa para Conversão. Considere reduzir.`});
+    else { pts+=3; bd.push({type:'neutral',msg:`${wc} palavras — aceitável`}); }
+  } else if (cat==='Nutricao') {
+    if (wc>=100&&wc<=400) { pts+=5; bd.push({type:'positive',msg:`${wc} palavras — ideal para Nutrição (+5 pts)`}); }
+    else if (wc>600) bd.push({type:'warning',msg:`${wc} palavras — muito longo. Considere resumir.`});
+    else pts+=3;
+  }
+  if (/gestor|frota|custo|problema|desafio|você já|quantas vezes|imagine|e se você|manager|fleet|challenge|problem/.test(bl.substring(0,200))) { pts+=5; bd.push({type:'positive',msg:'Abertura contextualiza dor/cenário do leitor (+5 pts)'}); }
+  if (/\d+%|\d+x|\d+ vezes|r\$\s*\d+|\$\s*\d+|\d+\s*min/.test(bl)) { pts+=4; bd.push({type:'positive',msg:'Usa dados ou números concretos (+4 pts)'}); }
+  if (/\{\{.*?\}\}|\[nome\]|\[name\]|\bgestor\b|\bmanager\b/.test(bl)) { pts+=3; bd.push({type:'positive',msg:'Tem token de personalização (+3 pts)'}); }
+  const breaks = (b.match(/\n/g)||[]).length;
+  if (breaks>=3&&wc>50) { pts+=3; bd.push({type:'positive',msg:'Boa estrutura com parágrafos curtos (+3 pts)'}); }
+  else if (wc>100&&breaks<2) bd.push({type:'warning',msg:'Texto corrido — parágrafos curtos melhoram leitura em mobile'});
+  const spam = ['grátis','gratis','clique aqui','urgente!','promoção exclusiva','100% garantido','free!','click here'].filter(k=>bl.includes(k));
+  if (spam.length) { pts-=5; bd.push({type:'negative',msg:`Termos de spam: ${spam.join(', ')} (-5 pts)`}); }
+  return {points:Math.max(0,Math.min(30,pts)), max:30, word_count:wc, breakdown:bd};
+}
+
+function estimatePerf(total, segment, themeKey) {
+  const segs = getSegments();
+  const s    = segs[segment]||segs.Geral;
+  const t    = THEMES[themeKey]||THEMES.general;
+  const r    = (total-50)/50;
+  const ab   = Math.max(5,Math.min(65,Math.round(s.abertura*(1+r*0.25)*10)/10));
+  const cl   = Math.max(0.1,Math.min(15,Math.round((s.cltk*0.5+t.cltk*0.5)*(1+r*0.4)*100)/100));
+  return {abertura_estimada:ab, cltk_estimado:cl, taxa_clique_estimada:Math.round(cl*ab/100*100)/100, benchmark_abertura:s.abertura, benchmark_cltk:s.cltk};
+}
+
+function generateSuggestions(sS, sT, sSeg, sC, segment, themeKey, cat) {
+  const out = [];
+  if (sS.points<15) {
+    if (themeKey==='trends_tech') out.push({area:'Assunto',priority:'alta',suggestion:'Ancore IA/tendências em resultado concreto. Ex: "Como a IA já está reduzindo custo da sua operação" performa melhor que frases genéricas.'});
+    else out.push({area:'Assunto',priority:'alta',suggestion:'Adicione especificidade. Os e-mails com maior CLTK em B2B mencionam produto, novidade ou melhoria diretamente. Ex: "Novidade: [feature] já disponível para você".'});
+  }
+  if (sS.breakdown.some(b=>b.msg.startsWith('Padrão [Guia]'))) out.push({area:'Assunto',priority:'alta',suggestion:'Remova o prefixo [Guia] ou [Ebook]. Esse padrão gera abertura alta mas CLTK muito baixo.'});
+  if (themeKey==='people_hr') out.push({area:'Tema',priority:'média',suggestion:'Pessoas/RH tem CLTK mais baixo. Enquadre pelo ângulo operacional: "Como treinar sua equipe usando dados do painel" converte mais.'});
+  if (segment==='Prospects') out.push({area:'Segmento',priority:'alta',suggestion:'Para Prospects, newsletter tem CLTK muito baixo. Tente e-mail curto (< 150 palavras) com 1 CTA único para demo ou trial.'});
+  if (segment==='Lost') out.push({area:'Segmento',priority:'média',suggestion:'Para Lost, foque em reativação pontual — oferta específica ou novidade que resolva o motivo do churn.'});
+  if (!sC.breakdown.some(b=>b.msg.startsWith('Tem CTA'))) out.push({area:'Copy',priority:'alta',suggestion:'Adicione um CTA claro. Sem CTA, o CLTK tende a zero.'});
+  if (sC.word_count>400&&cat==='Conversao') out.push({area:'Copy',priority:'média',suggestion:`${sC.word_count} palavras para Conversão. Plain text curto (< 200 palavras) supera formato longo. Corte ao essencial.`});
+  if (!out.length) out.push({area:'Geral',priority:'baixa',suggestion:'E-mail bem estruturado. Para garantir o topo do ranking, verifique se o assunto menciona novidade ou melhoria concreta — padrão dos maiores CLTKs em B2B.'});
+  return out;
+}
+
+function scoreEmail(subject, body, segment, cat, hasCta, ctaCount, preheader) {
+  const tk = classifyTheme(subject, body);
+  const sS = scoreSubject(subject);
+  const sT = scoreTheme(tk);
+  const sSeg = scoreSegment(segment, cat);
+  const sC = scoreCopy(body, cat, hasCta, ctaCount);
+  const total = Math.min(100, sS.points+sT.points+sSeg.points+sC.points);
+  let rating, rc, rd;
+  if (total>=80)      {rating='Excelente';        rc='green';  rd='E-mail com alto potencial de engajamento.';}
+  else if (total>=60) {rating='Bom';              rc='blue';   rd='E-mail sólido com espaço para melhorias pontuais.';}
+  else if (total>=40) {rating='Regular';          rc='yellow'; rd='Alguns ajustes podem aumentar significativamente o engajamento.';}
+  else                {rating='Precisa de revisão';rc='red';   rd='Pontos críticos identificados — recomendado revisar antes de enviar.';}
+  let phf;
+  if (!preheader.trim()) phf={type:'warning',msg:'Pré-header não informado. Pode aumentar a abertura em até 10%. Recomendado: 40–90 caracteres.'};
+  else if (preheader.length>90) phf={type:'warning',msg:`Pré-header com ${preheader.length} chars — pode ser truncado. Ideal: até 90.`};
+  else phf={type:'positive',msg:`Pré-header presente (${preheader.length} chars) — boa prática.`};
+  const segs = getSegments();
+  return {
+    total_score:total, rating, rating_color:rc, rating_desc:rd,
+    dimensions:{subject:sS,theme:sT,segment:sSeg,copy:sC},
+    theme_key:tk, theme_label:sT.theme_label, theme_cltk:sT.theme_cltk,
+    performance:estimatePerf(total,segment,tk),
+    suggestions:generateSuggestions(sS,sT,sSeg,sC,segment,tk,cat),
+    preheader_feedback:phf,
+    segment_label:(segs[segment]||segs.Geral).label,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════════════════════════════
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function updateCharCount(el, id, max) {
+  const span = document.getElementById(id);
+  if (el.id==='body') { span.textContent = el.value.trim().split(/\s+/).filter(w=>w).length+' palavras'; return; }
+  const n=el.value.length; span.textContent=n+' / '+max;
+  span.className='text-xs '+(n>max?'text-red-400':n>max*0.85?'text-yellow-400':'text-slate-500');
+}
+function ratingCls(c) { return {green:'tag-green',blue:'tag-blue',yellow:'tag-yellow',red:'tag-red'}[c]||'tag-blue'; }
+function dimColor(p)  { return p>=75?'bg-emerald-500':p>=50?'bg-blue-500':p>=30?'bg-yellow-500':'bg-red-500'; }
+function bdIcon(t)    { return {positive:'✓',negative:'✗',warning:'⚠',neutral:'·'}[t]||'·'; }
+function bdCls(t)     { return {positive:'text-emerald-400',negative:'text-red-400',warning:'text-yellow-400',neutral:'text-slate-400'}[t]||'text-slate-400'; }
+function priBadge(p)  { const c={alta:'bg-red-900 text-red-300',média:'bg-yellow-900 text-yellow-300',baixa:'bg-slate-700 text-slate-300'}; return `<span class="text-xs font-medium px-2 py-0.5 rounded-full ${c[p]||c.baixa}">${escapeHtml(p)}</span>`; }
+
+function runValidation(e) {
+  e.preventDefault();
+  const subject  = document.getElementById('subject').value;
+  if (!subject.trim()) { alert('Assunto é obrigatório'); return; }
+  document.getElementById('emptyState').classList.add('hidden');
+  const d = scoreEmail(
+    subject,
+    document.getElementById('body').value,
+    document.getElementById('segment').value,
+    document.getElementById('category').value,
+    document.getElementById('has_cta').value==='true',
+    parseInt(document.getElementById('cta_count').value),
+    document.getElementById('preheader').value,
+  );
+  renderResult(d);
+}
+
+function renderResult(d) {
+  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('results').classList.add('fade-in');
+  const score=d.total_score, off=264-(264*score/100);
+  const circ=document.getElementById('scoreCircle');
+  circ.style.strokeDashoffset=264;
+  circ.setAttribute('stroke',score>=80?'#10b981':score>=60?'#3b82f6':score>=40?'#f59e0b':'#ef4444');
+  setTimeout(()=>{circ.style.strokeDashoffset=off;},50);
+  document.getElementById('scoreNum').textContent=score;
+  const badge=document.getElementById('ratingBadge');
+  badge.textContent=d.rating; badge.className='inline-block text-sm font-bold px-3 py-1 rounded-full mb-2 '+ratingCls(d.rating_color);
+  document.getElementById('ratingDesc').textContent=d.rating_desc;
+  document.getElementById('themeTag').textContent='📊 '+d.theme_label;
+  document.getElementById('segmentTag').textContent='👥 '+d.segment_label;
+  const p=d.performance;
+  document.getElementById('estAbertura').textContent=p.abertura_estimada+'%';
+  document.getElementById('estCltk').textContent=p.cltk_estimado+'%';
+  document.getElementById('estClique').textContent=p.taxa_clique_estimada+'%';
+  document.getElementById('benchAbertura').textContent='bench: '+p.benchmark_abertura+'%';
+  document.getElementById('benchCltk').textContent='bench: '+p.benchmark_cltk+'%';
+  const dims=[{key:'subject',label:'Assunto',icon:'✉'},{key:'theme',label:'Tema',icon:'🏷'},{key:'segment',label:'Segmento',icon:'👥'},{key:'copy',label:'Copy',icon:'📝'}];
+  document.getElementById('dimensions').innerHTML=dims.map(dim=>{
+    const sd=d.dimensions[dim.key], pct=Math.round(sd.points/sd.max*100);
+    return `<div><div class="flex justify-between text-sm mb-1"><span class="text-slate-300">${dim.icon} ${dim.label}</span><span class="text-slate-400 font-mono">${sd.points} / ${sd.max}</span></div><div class="h-2 bg-slate-700 rounded-full overflow-hidden"><div class="h-full ${dimColor(pct)} dim-bar rounded-full" style="width:0%" data-width="${pct}%"></div></div></div>`;
+  }).join('');
+  setTimeout(()=>document.querySelectorAll('.dim-bar').forEach(b=>{b.style.width=b.dataset.width;}),100);
+  const ph=d.preheader_feedback;
+  if (ph) {
+    const box=document.getElementById('preheaderBox'); box.classList.remove('hidden');
+    const icons={positive:'✓',warning:'⚠',negative:'✗'}, cls={positive:'border-emerald-800 bg-emerald-900/20',warning:'border-yellow-800 bg-yellow-900/20',negative:'border-red-800 bg-red-900/20'};
+    box.className='rounded-xl p-4 border mb-4 '+(cls[ph.type]||cls.warning);
+    document.getElementById('preheaderIcon').textContent=icons[ph.type]||'⚠';
+    document.getElementById('preheaderMsg').textContent=ph.msg;
+  }
+  document.getElementById('suggestions').innerHTML=d.suggestions.map(s=>`
+    <div class="flex gap-3 items-start bg-slate-700/40 rounded-xl p-3">
+      <div class="flex-shrink-0 w-7 h-7 rounded-lg bg-slate-600 flex items-center justify-center text-xs font-bold text-slate-200">${escapeHtml(s.area[0])}</div>
+      <div class="flex-1"><div class="flex items-center gap-2 mb-1"><span class="text-sm font-medium text-slate-200">${escapeHtml(s.area)}</span>${priBadge(s.priority)}</div><p class="text-sm text-slate-400 leading-relaxed">${escapeHtml(s.suggestion)}</p></div>
+    </div>`).join('');
+  document.getElementById('breakdownDetail').innerHTML=dims.map(dim=>{
+    const sd=d.dimensions[dim.key];
+    const items=sd.breakdown.map(b=>`<li class="flex gap-2 items-start ${bdCls(b.type)}"><span class="flex-shrink-0 font-bold">${bdIcon(b.type)}</span><span>${escapeHtml(b.msg)}</span></li>`).join('');
+    return `<div><div class="text-slate-400 font-semibold mb-2">${dim.icon} ${dim.label} — ${sd.points}/${sd.max} pts</div><ul class="space-y-1">${items}</ul></div>`;
+  }).join('');
+  if (window.innerWidth<1024) document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+function loadExample() {
+  document.getElementById('subject').value   = 'Nova funcionalidade no painel: relatório de rotas em tempo real 🗺';
+  document.getElementById('preheader').value = 'Veja as rotas da sua frota em tempo real e reduza o tempo de entrega';
+  document.getElementById('segment').value   = 'Clientes';
+  document.getElementById('category').value  = 'Newsletter';
+  document.getElementById('has_cta').value   = 'true';
+  document.getElementById('cta_count').value = '1';
+  document.getElementById('body').value      = `Olá, gestor!\n\nSabemos que acompanhar as rotas da sua frota em tempo real é um desafio diário.\n\nPor isso, lançamos o novo Relatório de Rotas no painel: agora você visualiza o trajeto exato de cada veículo, identifica desvios e reduz tempo ocioso com apenas alguns cliques.\n\nNa prática, nossos clientes já reduziram em 18% o tempo médio de entrega no primeiro mês.\n\nAcesse agora e veja como funciona para a sua operação.\n\n→ Ver novo relatório de rotas`;
+  ['subject','preheader','body'].forEach(id=>{
+    updateCharCount(document.getElementById(id), id==='subject'?'subjectCount':id==='preheader'?'preCount':'bodyCount', 80);
+  });
+  document.getElementById('emptyState').classList.add('hidden');
+  const d=scoreEmail(document.getElementById('subject').value,document.getElementById('body').value,'Clientes','Newsletter',true,1,document.getElementById('preheader').value);
+  renderResult(d);
+}
+
+document.getElementById('emptyState').classList.remove('hidden');
+</script>
+</body>
+</html>
