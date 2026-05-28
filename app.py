@@ -20,7 +20,7 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"]   = os.getenv("FLASK_ENV") == "production"
 app.config["MAX_CONTENT_LENGTH"]      = 10 * 1024 * 1024  # 10 MB
 
-APP_PASSWORD  = os.getenv("APP_PASSWORD", "cobli2026")
+APP_PASSWORD  = os.getenv("APP_PASSWORD", "00000")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 DB_PATH       = os.path.join(os.path.dirname(__file__), "data", "validator.db")
 
@@ -103,6 +103,12 @@ def index():
 @app.route("/login", methods=["GET"])
 def login_page():
     with open(os.path.join(app.static_folder, "login.html"), encoding="utf-8") as f:
+        return f.read()
+
+@app.route("/welcome")
+@login_required
+def welcome_page():
+    with open(os.path.join(app.static_folder, "welcome.html"), encoding="utf-8") as f:
         return f.read()
 
 @app.route("/admin")

@@ -51,7 +51,8 @@
         });
         const data = await res.json();
         if (data.ok) {
-          window.location.href = '/';
+          const dest = localStorage.getItem('onboarding_done') ? '/' : '/welcome';
+          window.location.href = dest;
         } else {
           err.textContent = data.error || 'Senha incorreta';
           err.classList.remove('hidden');

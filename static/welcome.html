@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobli · Email Validator — Bem-vindo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #0f172a; font-family: system-ui, sans-serif; }
+  .step-card { animation: slideUp 0.4s ease both; }
+  .step-card:nth-child(1) { animation-delay: 0.1s; }
+  .step-card:nth-child(2) { animation-delay: 0.22s; }
+  .step-card:nth-child(3) { animation-delay: 0.34s; }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .connector { background: linear-gradient(to bottom, #3b82f6, #6366f1); }
+</style>
+</head>
+<body class="min-h-screen text-slate-200 flex flex-col">
+
+<!-- HEADER -->
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center gap-3">
+  <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+    </svg>
+  </div>
+  <span class="font-bold text-white">Email Validator</span>
+  <span class="text-slate-500 text-sm">Cobli · Interno</span>
+</header>
+
+<!-- MAIN -->
+<main class="flex-1 flex flex-col items-center justify-center px-4 py-12">
+
+  <!-- Título -->
+  <div class="text-center mb-12 max-w-xl">
+    <div class="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-500/30 text-blue-400 text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
+      Baseado em 2.013 e-mails reais da Cobli
+    </div>
+    <h1 class="text-3xl font-bold text-white mb-3">
+      Valide seu e-mail antes de enviar
+    </h1>
+    <p class="text-slate-400 text-base leading-relaxed">
+      A ferramenta analisa assunto, tema, segmento e copy com base no histórico real de performance do HubSpot — e estima abertura e CLTK antes do disparo.
+    </p>
+  </div>
+
+  <!-- Steps -->
+  <div class="w-full max-w-3xl grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+
+    <!-- Step 1 -->
+    <div class="step-card bg-slate-800 border border-slate-700 rounded-2xl p-6 relative">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+        </div>
+        <span class="text-xs font-bold text-blue-400 uppercase tracking-widest">Passo 1</span>
+      </div>
+      <h3 class="text-base font-bold text-white mb-2">Descreva o e-mail</h3>
+      <p class="text-slate-400 text-sm leading-relaxed">
+        Informe o assunto, pré-header, segmento da base (Clientes, MQL+, Prospects…), objetivo e a copy do e-mail.
+      </p>
+      <div class="mt-4 space-y-1.5">
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0"></span>Assunto e pré-header
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0"></span>Segmento e objetivo
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0"></span>Copy (texto puro)
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-card bg-slate-800 border border-slate-700 rounded-2xl p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Passo 2</span>
+      </div>
+      <h3 class="text-base font-bold text-white mb-2">Veja o score</h3>
+      <p class="text-slate-400 text-sm leading-relaxed">
+        O motor analisa 4 dimensões e estima abertura e CLTK com base nos benchmarks históricos da Cobli.
+      </p>
+      <div class="mt-4 grid grid-cols-2 gap-2">
+        <div class="bg-slate-700/50 rounded-lg px-2.5 py-2 text-center">
+          <div class="text-xs font-bold text-white">Assunto</div>
+          <div class="text-xs text-slate-400">30 pts</div>
+        </div>
+        <div class="bg-slate-700/50 rounded-lg px-2.5 py-2 text-center">
+          <div class="text-xs font-bold text-white">Tema</div>
+          <div class="text-xs text-slate-400">20 pts</div>
+        </div>
+        <div class="bg-slate-700/50 rounded-lg px-2.5 py-2 text-center">
+          <div class="text-xs font-bold text-white">Segmento</div>
+          <div class="text-xs text-slate-400">20 pts</div>
+        </div>
+        <div class="bg-slate-700/50 rounded-lg px-2.5 py-2 text-center">
+          <div class="text-xs font-bold text-white">Copy</div>
+          <div class="text-xs text-slate-400">30 pts</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-card bg-slate-800 border border-slate-700 rounded-2xl p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <span class="text-xs font-bold text-emerald-400 uppercase tracking-widest">Passo 3</span>
+      </div>
+      <h3 class="text-base font-bold text-white mb-2">Aplique as sugestões</h3>
+      <p class="text-slate-400 text-sm leading-relaxed">
+        A ferramenta devolve recomendações específicas e acionáveis para melhorar o e-mail antes do disparo.
+      </p>
+      <div class="mt-4 space-y-2">
+        <div class="flex items-start gap-2 text-xs">
+          <span class="w-4 h-4 rounded-full bg-red-900 text-red-300 flex items-center justify-center font-bold flex-shrink-0 mt-0.5">!</span>
+          <span class="text-slate-400">Pontos críticos (prioridade alta)</span>
+        </div>
+        <div class="flex items-start gap-2 text-xs">
+          <span class="w-4 h-4 rounded-full bg-yellow-900 text-yellow-300 flex items-center justify-center font-bold flex-shrink-0 mt-0.5">~</span>
+          <span class="text-slate-400">Melhorias recomendadas</span>
+        </div>
+        <div class="flex items-start gap-2 text-xs">
+          <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center font-bold flex-shrink-0 mt-0.5">+</span>
+          <span class="text-slate-400">Otimizações adicionais</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CTA -->
+  <div class="flex flex-col items-center gap-3">
+    <button onclick="start()"
+      class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold rounded-xl px-8 py-3.5 transition-all flex items-center gap-2 text-base shadow-lg shadow-blue-900/40">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+      </svg>
+      Começar a validar
+    </button>
+    <button onclick="skip()" class="text-sm text-slate-500 hover:text-slate-300 transition">
+      Não mostrar novamente
+    </button>
+  </div>
+
+</main>
+
+<script>
+  function start() {
+    window.location.href = '/';
+  }
+
+  function skip() {
+    localStorage.setItem('onboarding_done', '1');
+    window.location.href = '/';
+  }
+</script>
+</body>
+</html>
