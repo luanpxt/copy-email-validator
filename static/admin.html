@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobli · Admin — Email Validator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#0f172a; font-family: system-ui, sans-serif; }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+  .drop-zone { border: 2px dashed #475569; transition: all 0.2s; }
+  .drop-zone.drag-over { border-color:#3b82f6; background:#1e3a5f22; }
+</style>
+</head>
+<body class="min-h-screen text-slate-200">
+
+<!-- HEADER -->
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-slate-400 hover:text-white text-sm flex items-center gap-1">
+      ← Voltar
+    </a>
+    <span class="text-slate-600">|</span>
+    <span class="font-bold text-white">Painel Admin</span>
+    <span class="text-slate-500 text-sm">Email Validator · Cobli</span>
+  </div>
+  <button onclick="logout()" class="text-sm text-slate-400 hover:text-white">Sair</button>
+</header>
+
+<div class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+
+  <!-- STATS CARDS -->
+  <div>
+    <h2 class="text-lg font-bold text-white mb-4">Visão geral</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="statsCards">
+      <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 animate-pulse">
+        <div class="h-7 bg-slate-700 rounded w-16 mb-2"></div>
+        <div class="h-4 bg-slate-700 rounded w-24"></div>
+      </div>
+      <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 animate-pulse">
+        <div class="h-7 bg-slate-700 rounded w-16 mb-2"></div>
+        <div class="h-4 bg-slate-700 rounded w-24"></div>
+      </div>
+      <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 animate-pulse">
+        <div class="h-7 bg-slate-700 rounded w-16 mb-2"></div>
+        <div class="h-4 bg-slate-700 rounded w-24"></div>
+      </div>
+      <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 animate-pulse">
+        <div class="h-7 bg-slate-700 rounded w-16 mb-2"></div>
+        <div class="h-4 bg-slate-700 rounded w-24"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD CSV -->
+  <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+    <h2 class="text-lg font-bold text-white mb-1">Atualizar inteligência com novos dados</h2>
+    <p class="text-slate-400 text-sm mb-5">
+      Exporte os resultados de e-mail do HubSpot em CSV e importe aqui. A ferramenta vai processar
+      as taxas de abertura e CLTK para refinar os benchmarks internos.
+    </p>
+
+    <!-- How-to -->
+    <details class="mb-5 bg-slate-700/40 rounded-xl">
+      <summary class="px-4 py-3 cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-medium">
+        📋 Como exportar do HubSpot
+      </summary>
+      <div class="px-4 pb-4 text-sm text-slate-400 space-y-2 mt-2">
+        <p>1. No HubSpot, vá em <strong class="text-slate-300">Marketing → Email</strong></p>
+        <p>2. Selecione todos os e-mails desejados (ou filtre por data)</p>
+        <p>3. Clique em <strong class="text-slate-300">Exportar → CSV</strong> no canto superior direito</p>
+        <p>4. Aguarde o e-mail com o link de download e salve o arquivo</p>
+        <p>5. Faça upload aqui — o arquivo deve conter colunas de <strong class="text-slate-300">Taxa de abertura</strong> e <strong class="text-slate-300">Taxa de clickthrough</strong></p>
+        <p class="text-slate-500">Colunas aceitas: Nome do email, Assunto, Enviado, Taxa de abertura, Taxa de clickthrough</p>
+      </div>
+    </details>
+
+    <!-- Drop zone -->
+    <div id="dropZone" class="drop-zone rounded-xl p-10 text-center cursor-pointer mb-4"
+      onclick="document.getElementById('csvInput').click()"
+      ondragover="event.preventDefault(); this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')"
+      ondrop="handleDrop(event)">
+      <div class="text-4xl mb-3">📂</div>
+      <p class="text-slate-300 font-medium">Clique para selecionar ou arraste o CSV aqui</p>
+      <p class="text-slate-500 text-sm mt-1">Apenas arquivos .csv do HubSpot</p>
+      <input id="csvInput" type="file" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
+    </div>
+
+    <div id="fileInfo" class="hidden bg-slate-700/50 rounded-lg px-4 py-3 flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">📄</span>
+        <div>
+          <p id="fileName" class="text-sm font-medium text-slate-200"></p>
+          <p id="fileSize" class="text-xs text-slate-400"></p>
+        </div>
+      </div>
+      <button onclick="clearFile()" class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+    </div>
+
+    <div id="uploadError" class="hidden bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4"></div>
+    <div id="uploadSuccess" class="hidden bg-emerald-900/40 border border-emerald-700 text-emerald-300 rounded-lg px-4 py-3 text-sm mb-4"></div>
+
+    <button id="uploadBtn" onclick="uploadCSV()" disabled
+      class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg px-6 py-3 transition">
+      Importar dados
+    </button>
+  </div>
+
+  <!-- BENCHMARKS ATUAIS -->
+  <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+    <h2 class="text-lg font-bold text-white mb-4">Benchmarks atuais</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Por segmento</h3>
+        <div id="segmentBenchs" class="space-y-2"></div>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Por tema</h3>
+        <div id="themeBenchs" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTÓRICO DE VALIDAÇÕES -->
+  <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+    <h2 class="text-lg font-bold text-white mb-4">Últimas validações</h2>
+    <div id="recentValidations" class="space-y-2"></div>
+  </div>
+
+</div>
+
+<script>
+  let selectedFile = null;
+
+  function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) setFile(file);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) setFile(file);
+    else showError('Por favor, selecione um arquivo .csv');
+  }
+
+  function setFile(file) {
+    selectedFile = file;
+    document.getElementById('fileInfo').classList.remove('hidden');
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    document.getElementById('uploadBtn').disabled = false;
+    document.getElementById('uploadError').classList.add('hidden');
+    document.getElementById('uploadSuccess').classList.add('hidden');
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    document.getElementById('fileInfo').classList.add('hidden');
+    document.getElementById('csvInput').value = '';
+    document.getElementById('uploadBtn').disabled = true;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('uploadError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  async function uploadCSV() {
+    if (!selectedFile) return;
+    const btn = document.getElementById('uploadBtn');
+    btn.disabled = true;
+    btn.textContent = 'Processando…';
+    document.getElementById('uploadError').classList.add('hidden');
+    document.getElementById('uploadSuccess').classList.add('hidden');
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const res  = await fetch('/api/admin/upload', {method:'POST', body: formData});
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const el = document.getElementById('uploadSuccess');
+      el.textContent = `✓ ${data.message} (${data.total_rows} linhas processadas no arquivo)`;
+      el.classList.remove('hidden');
+      clearFile();
+      loadStats();
+    } catch(e) {
+      showError(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Importar dados';
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const res  = await fetch('/api/admin/stats');
+      const data = await res.json();
+
+      document.getElementById('statsCards').innerHTML = `
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+          <div class="text-2xl font-bold text-blue-400">${data.total_validations}</div>
+          <div class="text-xs text-slate-400 mt-1">Validações realizadas</div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+          <div class="text-2xl font-bold text-emerald-400">${data.avg_score ? data.avg_score + '/100' : '—'}</div>
+          <div class="text-xs text-slate-400 mt-1">Score médio</div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+          <div class="text-2xl font-bold text-violet-400">${data.total_email_data.toLocaleString('pt-BR')}</div>
+          <div class="text-xs text-slate-400 mt-1">E-mails importados</div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+          <div class="text-sm font-bold text-slate-300">${data.last_import ? data.last_import.split('T')[0] : '—'}</div>
+          <div class="text-xs text-slate-400 mt-1">Última importação</div>
+        </div>`;
+
+      // Validações recentes
+      document.getElementById('recentValidations').innerHTML = data.recent_validations.length
+        ? data.recent_validations.map(v => {
+            const colors = { Excelente:'text-emerald-400', Bom:'text-blue-400', Regular:'text-yellow-400', 'Precisa de revisão':'text-red-400' };
+            return `<div class="flex items-center gap-3 bg-slate-700/40 rounded-lg px-3 py-2">
+              <span class="font-bold text-lg ${colors[v.rating] || 'text-slate-400'} w-10 text-center flex-shrink-0">${v.total_score}</span>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-slate-300 truncate">${escapeHtml(v.subject || '(sem assunto)')}</p>
+                <p class="text-xs text-slate-500">${escapeHtml(v.segment)} · ${escapeHtml(v.category)} · ${v.created_at.split('T')[0]}</p>
+              </div>
+              <span class="text-xs ${colors[v.rating] || 'text-slate-400'}">${escapeHtml(v.rating)}</span>
+            </div>`;
+          }).join('')
+        : '<p class="text-sm text-slate-500">Nenhuma validação ainda.</p>';
+
+    } catch(e) {}
+
+    // Benchmarks
+    try {
+      const res  = await fetch('/api/benchmarks');
+      const data = await res.json();
+
+      document.getElementById('segmentBenchs').innerHTML = Object.entries(data.segments).map(([k, v]) =>
+        `<div class="flex justify-between items-center text-sm py-1.5 border-b border-slate-700">
+          <span class="text-slate-300">${v.label}</span>
+          <div class="text-right">
+            <span class="text-emerald-400 font-mono">${v.cltk}%</span>
+            <span class="text-slate-500 text-xs ml-1">CLTK</span>
+          </div>
+        </div>`).join('');
+
+      document.getElementById('themeBenchs').innerHTML = Object.entries(data.themes)
+        .sort((a, b) => b[1].cltk - a[1].cltk)
+        .map(([k, v]) =>
+        `<div class="flex justify-between items-center text-sm py-1.5 border-b border-slate-700">
+          <span class="text-slate-300 truncate pr-2">${v.label}</span>
+          <div class="text-right flex-shrink-0">
+            <span class="text-blue-400 font-mono">${v.cltk}%</span>
+            <span class="text-slate-500 text-xs ml-1">CLTK</span>
+          </div>
+        </div>`).join('');
+    } catch(e) {}
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function logout() {
+    await fetch('/api/logout', {method:'POST'});
+    window.location.href = '/login';
+  }
+
+  loadStats();
+</script>
+</body>
+</html>

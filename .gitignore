@@ -1,0 +1,21 @@
+# Ambiente Python
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+
+# Banco de dados e dados locais
+data/
+*.db
+*.sqlite
+
+# Editor e OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

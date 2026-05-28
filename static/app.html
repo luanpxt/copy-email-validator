@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobli · Email Validator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#0f172a; font-family: system-ui, sans-serif; }
+  .score-ring { transition: stroke-dashoffset 0.8s ease; }
+  .tag-green  { background:#14532d; color:#86efac; }
+  .tag-blue   { background:#1e3a5f; color:#93c5fd; }
+  .tag-yellow { background:#713f12; color:#fde68a; }
+  .tag-red    { background:#7f1d1d; color:#fca5a5; }
+  .dim-bar    { transition: width 0.6s ease; }
+  .fade-in    { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:#1e293b}
+  ::-webkit-scrollbar-thumb{background:#475569;border-radius:3px}
+</style>
+</head>
+<body class="min-h-screen text-slate-200">
+
+<!-- HEADER -->
+<header class="bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+      <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    <span class="font-bold text-white">Email Validator</span>
+    <span class="text-slate-500 text-sm">Cobli · Interno</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <a href="/admin" class="text-sm text-slate-400 hover:text-white transition px-3 py-1.5 rounded-lg hover:bg-slate-800">⚙ Admin</a>
+    <button onclick="logout()" class="text-sm text-slate-400 hover:text-white transition">Sair</button>
+  </div>
+</header>
+
+<div class="max-w-6xl mx-auto px-4 py-8">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+    <!-- LEFT: FORM -->
+    <div>
+      <h2 class="text-xl font-bold text-white mb-1">Validar e-mail</h2>
+      <p class="text-slate-400 text-sm mb-6">Preencha os campos abaixo e veja o score antes de enviar.</p>
+
+      <form id="form" onsubmit="validate(event)" class="space-y-4">
+
+        <!-- Assunto -->
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">
+            Assunto do e-mail <span class="text-red-400">*</span>
+          </label>
+          <input id="subject" type="text" placeholder="Ex: Novidade no Painel: nova tela de relatórios 🚗"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            oninput="updateCharCount(this, 'subjectCount', 80)">
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-slate-500">Ideal: 35–80 caracteres</span>
+            <span id="subjectCount" class="text-xs text-slate-500">0 / 80</span>
+          </div>
+        </div>
+
+        <!-- Pré-header -->
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">
+            Pré-header <span class="text-slate-500 font-normal">(texto após o assunto na caixa de entrada)</span>
+          </label>
+          <input id="preheader" type="text" placeholder="Ex: Veja o que mudou e como usar no dia a dia da sua frota"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            oninput="updateCharCount(this, 'preCount', 90)">
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-slate-500">Ideal: até 90 caracteres</span>
+            <span id="preCount" class="text-xs text-slate-500">0 / 90</span>
+          </div>
+        </div>
+
+        <!-- Segmento + Categoria -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Segmento da base</label>
+            <select id="segment" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Clientes">Clientes ativos</option>
+              <option value="MQL+">MQL+ (leads quentes)</option>
+              <option value="MQL-">MQL- (leads frios)</option>
+              <option value="Prospects">Prospects</option>
+              <option value="Lost">Lost / Churn</option>
+              <option value="Geral" selected>Base geral</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Objetivo do e-mail</label>
+            <select id="category" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Newsletter">Newsletter</option>
+              <option value="Nutricao">Nutrição</option>
+              <option value="Conversao">Conversão</option>
+              <option value="Pre-vendas">Pré-vendas</option>
+              <option value="Agradecimento">Agradecimento / Entrega</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Tem CTA (botão/link de ação)?</label>
+            <select id="has_cta" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">Quantos CTAs?</label>
+            <select id="cta_count" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="1">1 (recomendado)</option>
+              <option value="2">2</option>
+              <option value="3">3 ou mais</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Copy -->
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">Copy do e-mail</label>
+          <textarea id="body" rows="8" placeholder="Cole aqui o texto do e-mail (sem HTML). Quanto mais completo, melhor a análise da copy."
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            oninput="updateCharCount(this, 'bodyCount', 99999)"></textarea>
+          <div class="flex justify-between mt-1">
+            <span class="text-xs text-slate-500">Cole o texto puro (sem código HTML)</span>
+            <span id="bodyCount" class="text-xs text-slate-500">0 palavras</span>
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn"
+          class="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-3 transition flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span id="btnText">Analisar e-mail</span>
+        </button>
+      </form>
+
+      <!-- HISTORY -->
+      <div class="mt-8">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Histórico recente</h3>
+          <button onclick="loadHistory()" class="text-xs text-blue-400 hover:text-blue-300">Atualizar</button>
+        </div>
+        <div id="history" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: RESULTS -->
+    <div id="results" class="hidden fade-in">
+
+      <!-- Score ring -->
+      <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 mb-4">
+        <div class="flex items-center gap-6">
+          <div class="relative flex-shrink-0">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="#1e293b" stroke-width="10"/>
+              <circle id="scoreCircle" cx="50" cy="50" r="42" fill="none" stroke="#3b82f6"
+                stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="264" stroke-dashoffset="264"
+                transform="rotate(-90 50 50)" class="score-ring"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="scoreNum" class="text-2xl font-bold text-white">0</span>
+              <span class="text-xs text-slate-400">/ 100</span>
+            </div>
+          </div>
+          <div class="flex-1">
+            <div id="ratingBadge" class="inline-block text-sm font-bold px-3 py-1 rounded-full mb-2"></div>
+            <p id="ratingDesc" class="text-slate-300 text-sm"></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span id="themeTag" class="text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-300"></span>
+              <span id="segmentTag" class="text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-300"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estimativas -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+          <div id="estAbertura" class="text-2xl font-bold text-blue-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Abertura estimada</div>
+          <div id="benchAbertura" class="text-xs text-slate-500 mt-0.5"></div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+          <div id="estCltk" class="text-2xl font-bold text-emerald-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">CLTK estimado</div>
+          <div id="benchCltk" class="text-xs text-slate-500 mt-0.5"></div>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+          <div id="estClique" class="text-2xl font-bold text-violet-400">—</div>
+          <div class="text-xs text-slate-400 mt-1">Clique estimado</div>
+          <div class="text-xs text-slate-500 mt-0.5">sobre lista</div>
+        </div>
+      </div>
+
+      <!-- Dimensões -->
+      <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 mb-4">
+        <h3 class="text-sm font-semibold text-slate-300 mb-4">Detalhamento do score</h3>
+        <div class="space-y-3" id="dimensions"></div>
+      </div>
+
+      <!-- Preheader -->
+      <div id="preheaderBox" class="bg-slate-800 rounded-xl p-4 border border-slate-700 mb-4 hidden">
+        <div class="flex items-start gap-3">
+          <span id="preheaderIcon" class="text-lg flex-shrink-0"></span>
+          <p id="preheaderMsg" class="text-sm text-slate-300"></p>
+        </div>
+      </div>
+
+      <!-- Sugestões -->
+      <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 mb-4">
+        <h3 class="text-sm font-semibold text-slate-300 mb-3">Sugestões de melhoria</h3>
+        <div id="suggestions" class="space-y-3"></div>
+      </div>
+
+      <!-- Claude suggestions (if available) -->
+      <div id="claudeBox" class="hidden bg-slate-800 rounded-2xl p-5 border border-blue-800 mb-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-blue-400 text-sm font-semibold">✦ Análise aprofundada (Claude AI)</span>
+        </div>
+        <div id="claudeSuggestions" class="text-sm text-slate-300 whitespace-pre-line leading-relaxed"></div>
+      </div>
+
+      <!-- Dimension breakdown accordion -->
+      <details class="bg-slate-800 rounded-xl border border-slate-700 mb-4">
+        <summary class="px-5 py-3 cursor-pointer text-sm text-slate-400 hover:text-white">
+          Ver detalhes de cada dimensão
+        </summary>
+        <div id="breakdownDetail" class="px-5 pb-4 space-y-4 text-sm"></div>
+      </details>
+
+    </div>
+
+    <!-- EMPTY STATE -->
+    <div id="emptyState" class="hidden lg:flex flex-col items-center justify-center text-center py-20">
+      <div class="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 border border-slate-700">
+        <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+      </div>
+      <p class="text-slate-500 text-sm">Preencha o formulário ao lado<br>para ver a análise do e-mail</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── helpers ────────────────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function updateCharCount(el, countId, max) {
+    const span = document.getElementById(countId);
+    if (el.id === 'body') {
+      const words = el.value.trim().split(/\s+/).filter(w => w).length;
+      span.textContent = words + ' palavras';
+    } else {
+      const n = el.value.length;
+      span.textContent = n + ' / ' + max;
+      span.className = 'text-xs ' + (n > max ? 'text-red-400' : n > max * 0.85 ? 'text-yellow-400' : 'text-slate-500');
+    }
+  }
+
+  function ratingColors(color) {
+    return { green:'tag-green', blue:'tag-blue', yellow:'tag-yellow', red:'tag-red' }[color] || 'tag-blue';
+  }
+
+  function dimColor(pct) {
+    if (pct >= 75) return 'bg-emerald-500';
+    if (pct >= 50) return 'bg-blue-500';
+    if (pct >= 30) return 'bg-yellow-500';
+    return 'bg-red-500';
+  }
+
+  function breakdownIcon(type) {
+    return { positive:'✓', negative:'✗', warning:'⚠', neutral:'·' }[type] || '·';
+  }
+
+  function breakdownColor(type) {
+    return { positive:'text-emerald-400', negative:'text-red-400', warning:'text-yellow-400', neutral:'text-slate-400' }[type] || 'text-slate-400';
+  }
+
+  function priorityBadge(p) {
+    const cls = { alta:'bg-red-900 text-red-300', média:'bg-yellow-900 text-yellow-300', baixa:'bg-slate-700 text-slate-300' };
+    return `<span class="text-xs font-medium px-2 py-0.5 rounded-full ${cls[p] || cls.baixa}">${p}</span>`;
+  }
+
+  // ── validate ───────────────────────────────────────────────────────────────
+  async function validate(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    btn.disabled = true;
+    btnText.textContent = 'Analisando…';
+
+    document.getElementById('emptyState').classList.add('hidden');
+
+    try {
+      const res = await fetch('/api/validate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          subject:   document.getElementById('subject').value,
+          preheader: document.getElementById('preheader').value,
+          body:      document.getElementById('body').value,
+          segment:   document.getElementById('segment').value,
+          category:  document.getElementById('category').value,
+          has_cta:   document.getElementById('has_cta').value === 'true',
+          cta_count: parseInt(document.getElementById('cta_count').value),
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      renderResult(data);
+      loadHistory();
+    } catch(err) {
+      alert('Erro: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btnText.textContent = 'Analisar e-mail';
+    }
+  }
+
+  // ── render result ──────────────────────────────────────────────────────────
+  function renderResult(d) {
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').classList.add('fade-in');
+
+    // Score ring
+    const score = d.total_score;
+    const offset = 264 - (264 * score / 100);
+    const circle = document.getElementById('scoreCircle');
+    circle.style.strokeDashoffset = 264;
+    circle.stroke = score >= 80 ? '#10b981' : score >= 60 ? '#3b82f6' : score >= 40 ? '#f59e0b' : '#ef4444';
+    setTimeout(() => { circle.style.strokeDashoffset = offset; }, 50);
+    document.getElementById('scoreNum').textContent = score;
+
+    // Rating
+    const badge = document.getElementById('ratingBadge');
+    badge.textContent = d.rating;
+    badge.className = 'inline-block text-sm font-bold px-3 py-1 rounded-full mb-2 ' + ratingColors(d.rating_color);
+    document.getElementById('ratingDesc').textContent = d.rating_desc;
+
+    // Tags
+    document.getElementById('themeTag').textContent = '📊 ' + d.theme_label;
+    document.getElementById('segmentTag').textContent = '👥 ' + d.segment_label;
+
+    // Performance
+    const p = d.performance;
+    document.getElementById('estAbertura').textContent = p.abertura_estimada + '%';
+    document.getElementById('estCltk').textContent = p.cltk_estimado + '%';
+    document.getElementById('estClique').textContent = p.taxa_clique_estimada + '%';
+    document.getElementById('benchAbertura').textContent = 'bench: ' + p.benchmark_abertura + '%';
+    document.getElementById('benchCltk').textContent = 'bench: ' + p.benchmark_cltk + '%';
+
+    // Dimensões
+    const dims = [
+      { key: 'subject', label: 'Assunto',  icon: '✉' },
+      { key: 'theme',   label: 'Tema',     icon: '🏷' },
+      { key: 'segment', label: 'Segmento', icon: '👥' },
+      { key: 'copy',    label: 'Copy',     icon: '📝' },
+    ];
+    document.getElementById('dimensions').innerHTML = dims.map(dim => {
+      const sd = d.dimensions[dim.key];
+      const pct = Math.round(sd.points / sd.max * 100);
+      return `
+        <div>
+          <div class="flex justify-between text-sm mb-1">
+            <span class="text-slate-300">${dim.icon} ${dim.label}</span>
+            <span class="text-slate-400 font-mono">${sd.points} / ${sd.max}</span>
+          </div>
+          <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div class="h-full ${dimColor(pct)} dim-bar rounded-full" style="width:0%" data-width="${pct}%"></div>
+          </div>
+        </div>`;
+    }).join('');
+
+    setTimeout(() => {
+      document.querySelectorAll('.dim-bar').forEach(bar => {
+        bar.style.width = bar.dataset.width;
+      });
+    }, 100);
+
+    // Preheader
+    const ph = d.preheader_feedback;
+    if (ph) {
+      const box = document.getElementById('preheaderBox');
+      box.classList.remove('hidden');
+      const icons = { positive:'✓', warning:'⚠', negative:'✗' };
+      const cls   = { positive:'border-emerald-800 bg-emerald-900/20', warning:'border-yellow-800 bg-yellow-900/20', negative:'border-red-800 bg-red-900/20' };
+      box.className = 'rounded-xl p-4 border mb-4 ' + (cls[ph.type] || cls.warning);
+      document.getElementById('preheaderIcon').textContent = icons[ph.type] || '⚠';
+      document.getElementById('preheaderMsg').textContent = ph.msg;
+    }
+
+    // Sugestões
+    document.getElementById('suggestions').innerHTML = d.suggestions.map(s => `
+      <div class="flex gap-3 items-start bg-slate-700/40 rounded-xl p-3">
+        <div class="flex-shrink-0 w-7 h-7 rounded-lg bg-slate-600 flex items-center justify-center text-xs font-bold text-slate-200">
+          ${s.area[0]}
+        </div>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-sm font-medium text-slate-200">${s.area}</span>
+            ${priorityBadge(s.priority)}
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">${s.suggestion}</p>
+        </div>
+      </div>`).join('');
+
+    // Claude
+    if (d.claude_suggestions) {
+      document.getElementById('claudeBox').classList.remove('hidden');
+      document.getElementById('claudeSuggestions').textContent = d.claude_suggestions;
+    } else {
+      document.getElementById('claudeBox').classList.add('hidden');
+    }
+
+    // Breakdown detail
+    const detail = document.getElementById('breakdownDetail');
+    detail.innerHTML = dims.map(dim => {
+      const sd = d.dimensions[dim.key];
+      const items = sd.breakdown.map(b =>
+        `<li class="flex gap-2 items-start ${breakdownColor(b.type)}">
+          <span class="flex-shrink-0 font-bold">${breakdownIcon(b.type)}</span>
+          <span>${b.msg}</span>
+        </li>`).join('');
+      return `<div>
+        <div class="text-slate-400 font-semibold mb-2">${dim.icon} ${dim.label} — ${sd.points}/${sd.max} pts</div>
+        <ul class="space-y-1">${items}</ul>
+      </div>`;
+    }).join('');
+
+    // Scroll to results on mobile
+    if (window.innerWidth < 1024) {
+      document.getElementById('results').scrollIntoView({behavior:'smooth'});
+    }
+  }
+
+  // ── history ────────────────────────────────────────────────────────────────
+  async function loadHistory() {
+    try {
+      const res  = await fetch('/api/history');
+      const data = await res.json();
+      const el   = document.getElementById('history');
+      if (!data.length) { el.innerHTML = '<p class="text-sm text-slate-500">Nenhuma validação ainda.</p>'; return; }
+      el.innerHTML = data.slice(0, 8).map(h => {
+        const colors = { Excelente:'text-emerald-400', Bom:'text-blue-400', Regular:'text-yellow-400', 'Precisa de revisão':'text-red-400' };
+        const date   = h.created_at.split('T')[0];
+        return `<div class="bg-slate-800 rounded-lg px-3 py-2 border border-slate-700 flex items-center gap-3">
+          <span class="font-bold text-lg ${colors[h.rating] || 'text-slate-400'} w-10 text-center flex-shrink-0">${h.total_score}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-slate-300 truncate">${escapeHtml(h.subject || '(sem assunto)')}</p>
+            <p class="text-xs text-slate-500">${escapeHtml(h.segment)} · ${escapeHtml(h.category)} · ${date}</p>
+          </div>
+        </div>`;
+      }).join('');
+    } catch(e) {}
+  }
+
+  // ── logout ─────────────────────────────────────────────────────────────────
+  async function logout() {
+    await fetch('/api/logout', {method:'POST'});
+    window.location.href = '/login';
+  }
+
+  // ── init ───────────────────────────────────────────────────────────────────
+  document.getElementById('emptyState').classList.remove('hidden');
+  loadHistory();
+</script>
+</body>
+</html>
