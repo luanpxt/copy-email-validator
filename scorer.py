@@ -1,441 +1,429 @@
 """
 Email Validator — Scoring Engine
-Generic email marketing scoring based on industry benchmarks.
-Calibrate with your own data by uploading a historical CSV.
+Scores against learned cluster benchmarks when data is available,
+falls back to generic industry averages otherwise.
 """
 
-import re, json, os
+import re
 
-# ── Default benchmarks (industry averages) ────────────────────────────────────
-
-SEGMENT_BENCHMARKS = {
-    "Clientes":  {"abertura": 27.0, "cltk": 3.00, "label": "Clientes / Ativos"},
-    "MQL+":      {"abertura": 30.0, "cltk": 2.00, "label": "MQL+ (leads quentes)"},
-    "MQL-":      {"abertura": 22.0, "cltk": 1.00, "label": "MQL- (leads frios)"},
-    "Lost":      {"abertura": 15.0, "cltk": 0.70, "label": "Lost / Churn"},
-    "Prospects": {"abertura": 32.0, "cltk": 0.80, "label": "Prospects"},
-    "Geral":     {"abertura": 25.0, "cltk": 1.50, "label": "Base geral / Newsletter"},
+# ── Fallback benchmarks (used when no data has been imported) ─────────────────
+FALLBACK_BENCHMARKS = {
+    "abertura": 25.0,
+    "cltk":      1.5,
 }
 
-THEME_BENCHMARKS = {
-    "product_news":   {"cltk": 4.00, "label": "Novidades de Produto / Features"},
-    "roi_efficiency": {"cltk": 2.50, "label": "ROI / Custo / Eficiência"},
-    "events":         {"cltk": 2.20, "label": "Eventos / Webinars"},
-    "security":       {"cltk": 1.80, "label": "Segurança / Compliance"},
-    "logistics":      {"cltk": 1.60, "label": "Logística / Operações"},
-    "trends_tech":    {"cltk": 1.30, "label": "Tendências / Tecnologia / IA"},
-    "people_hr":      {"cltk": 1.00, "label": "Pessoas / RH / Equipe"},
-    "general":        {"cltk": 1.50, "label": "Geral / Newsletter"},
-}
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-CATEGORY_BENCHMARKS = {
-    "Agradecimento": {"cltk": 8.0,  "abertura": 50.0},
-    "Nutricao":      {"cltk": 2.5,  "abertura": 30.0},
-    "Conversao":     {"cltk": 3.5,  "abertura": 28.0},
-    "Newsletter":    {"cltk": 1.5,  "abertura": 25.0},
-    "Pre-vendas":    {"cltk": 5.0,  "abertura": 32.0},
-}
+def _count_emojis(text: str) -> int:
+    return len(re.findall(r'[\U00010000-\U0010ffff]|[☀-⟿]', text or ""))
 
-_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+def _word_count(text: str) -> int:
+    return len((text or "").split())
+
+def _get_cluster(cluster_data: dict, segment: str, category: str):
+    if not cluster_data or not cluster_data.get("clusters"):
+        return None
+    return cluster_data["clusters"].get(f"{segment}|{category}")
 
 
-def _load_custom_benchmarks() -> dict:
-    path = os.path.join(_DATA_DIR, "custom_benchmarks.json")
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+# ── Subject scoring (0–30 pts) ────────────────────────────────────────────────
 
-
-def get_effective_segment_benchmarks() -> dict:
-    """Merge default benchmarks with any per-segment custom data from uploads."""
-    custom = _load_custom_benchmarks()
-    if not custom.get("segments"):
-        return SEGMENT_BENCHMARKS
-    merged = {k: dict(v) for k, v in SEGMENT_BENCHMARKS.items()}
-    for seg, data in custom["segments"].items():
-        if seg in merged:
-            merged[seg].update({k: v for k, v in data.items() if k in ("abertura", "cltk")})
-    return merged
-
-
-# ── Theme classification ───────────────────────────────────────────────────────
-
-def classify_theme(subject: str, body: str = "") -> str:
-    text = (subject + " " + body).lower()
-
-    if any(k in text for k in ["product", "feature", "release", "launch", "update",
-                                "new feature", "improvement", "dashboard", "platform",
-                                "painel", "plataforma", "novidade", "melhoria",
-                                "lançamento", "atualização", "nova feature", "melhoramos"]):
-        return "product_news"
-    if any(k in text for k in ["roi", "cost", "saving", "reduce cost", "efficiency",
-                                "revenue", "profit", "budget", "custo", "economia",
-                                "eficiência", "eficiencia", "combustível", "reduzir gastos"]):
-        return "roi_efficiency"
-    if any(k in text for k in ["event", "webinar", "conference", "workshop", "course",
-                                "training", "evento", "curso", "treinamento"]):
-        return "events"
-    if any(k in text for k in ["security", "compliance", "safety", "risk", "breach",
-                                "segurança", "seguranca", "compliance", "acidente",
-                                "prevenção", "prevencao", "risco"]):
-        return "security"
-    if any(k in text for k in ["logistics", "delivery", "shipping", "supply chain",
-                                "logística", "logistica", "entrega", "rota",
-                                "roteirização", "roteirizacao", "field", "operações"]):
-        return "logistics"
-    if any(k in text for k in ["ai", "artificial intelligence", "automation", "trend",
-                                "technology", "digital", "future", "inteligência artificial",
-                                "automação", "automacao", "tendência", "tendencia",
-                                "tecnologia", "futuro"]):
-        return "trends_tech"
-    if any(k in text for k in ["people", "hr", "team", "employee", "staff", "culture",
-                                "pessoas", "equipe", "rh", "colaborador", "funcionário",
-                                "funcionario", "gestão de pessoa"]):
-        return "people_hr"
-    return "general"
-
-
-# ── Subject scoring (0–30 pts) ─────────────────────────────────────────────────
-
-def score_subject(subject: str) -> dict:
-    s  = subject.strip()
-    sl = s.lower()
+def score_subject(subject: str, cluster) -> dict:
+    s         = subject.strip()
+    sl        = s.lower()
     points    = 0
     breakdown = []
 
-    # Product/feature keywords — highest-performing category in most B2B email programs
-    product_kws = ["product", "feature", "launch", "update", "new", "release", "improvement",
-                   "painel", "novidade", "novidades", "melhoria", "melhorias",
-                   "lançamento", "lancamento", "atualização", "atualizacao",
-                   "nova feature", "melhoramos", "implementamos"]
-    if any(k in sl for k in product_kws):
-        points += 10
-        breakdown.append({"type": "positive", "msg": "Menciona produto/feature diretamente (+10 pts) — padrão dos maiores CLTKs em programas B2B"})
+    # Length — compare against cluster profile if available
+    char_count = len(s)
+    if cluster and cluster.get("subject", {}).get("len_p50"):
+        p25 = cluster["subject"].get("len_p25", 30)
+        p50 = cluster["subject"].get("len_p50", 55)
+        p75 = cluster["subject"].get("len_p75", 80)
+        if p25 <= char_count <= p75:
+            points += 7
+            breakdown.append({"type": "positive", "msg": f"{char_count} chars — dentro da faixa do seu cluster (p25={p25:.0f}–p75={p75:.0f}) (+7 pts)"})
+        else:
+            direction = "curto" if char_count < p25 else "longo"
+            ref = p25 if char_count < p25 else p75
+            points += 2
+            breakdown.append({"type": "warning", "msg": f"{char_count} chars — muito {direction} para o cluster (referência p50={p50:.0f})"})
+    else:
+        if 35 <= char_count <= 80:
+            points += 7
+            breakdown.append({"type": "positive", "msg": f"{char_count} chars — comprimento ideal 35–80 (+7 pts)"})
+        elif char_count < 20:
+            points -= 2
+            breakdown.append({"type": "negative", "msg": f"Muito curto ({char_count} chars) (-2 pts)"})
+        elif char_count > 100:
+            points -= 3
+            breakdown.append({"type": "negative", "msg": f"Muito longo ({char_count} chars) — pode ser truncado em mobile (-3 pts)"})
+        else:
+            points += 3
+            breakdown.append({"type": "neutral", "msg": f"{char_count} chars — aceitável, ideal é 35–80"})
 
-    # Concrete benefit verb
+    # Emojis — compare against cluster if available
+    emoji_count = _count_emojis(s)
+    if cluster and cluster.get("subject", {}).get("emoji_p50") is not None:
+        expected = cluster["subject"]["emoji_p50"]
+        if abs(emoji_count - expected) <= 1:
+            points += 4
+            breakdown.append({"type": "positive", "msg": f"{emoji_count} emoji(s) — alinhado com a média do cluster ({expected:.1f}) (+4 pts)"})
+        elif emoji_count > expected + 2:
+            points -= 2
+            breakdown.append({"type": "warning", "msg": f"{emoji_count} emojis — acima da média do cluster ({expected:.1f})"})
+        else:
+            points += 2
+            breakdown.append({"type": "neutral", "msg": f"{emoji_count} emoji(s)"})
+    else:
+        if 1 <= emoji_count <= 2:
+            points += 4
+            breakdown.append({"type": "positive", "msg": f"{emoji_count} emoji(s) — uso adequado (+4 pts)"})
+        elif emoji_count > 3:
+            points -= 2
+            breakdown.append({"type": "warning", "msg": f"{emoji_count} emojis — excesso pode prejudicar deliverability"})
+
+    # Benefit verb
     benefit_kws = ["reduzir", "economizar", "aumentar", "melhorar", "otimizar",
                    "evitar", "resolver", "facilitar", "transformar", "descobrir",
+                   "ganhar", "garantir", "acelerar",
                    "reduce", "save", "increase", "improve", "optimize", "solve"]
     if any(k in sl for k in benefit_kws):
         points += 6
-        breakdown.append({"type": "positive", "msg": "Contém verbo de benefício concreto (+6 pts)"})
-
-    # Emoji usage
-    emoji_count = len(re.findall(r'[\U00010000-\U0010ffff]|[☀-⟿]', s))
-    if 1 <= emoji_count <= 2:
-        points += 4
-        breakdown.append({"type": "positive", "msg": f"{emoji_count} emoji(s) — uso adequado (+4 pts)"})
-    elif emoji_count > 3:
-        points -= 2
-        breakdown.append({"type": "warning", "msg": f"{emoji_count} emojis — excesso pode prejudicar deliverability (-2 pts)"})
-
-    # Ideal length
-    char_count = len(s)
-    if 35 <= char_count <= 80:
-        points += 5
-        breakdown.append({"type": "positive", "msg": f"{char_count} caracteres — comprimento ideal 35–80 (+5 pts)"})
-    elif char_count < 20:
-        points -= 3
-        breakdown.append({"type": "negative", "msg": f"Muito curto ({char_count} chars) — pouca informação (-3 pts)"})
-    elif char_count > 100:
-        points -= 4
-        breakdown.append({"type": "negative", "msg": f"Muito longo ({char_count} chars) — pode ser truncado em mobile (-4 pts)"})
-    else:
-        breakdown.append({"type": "neutral", "msg": f"{char_count} caracteres — aceitável, mas o ideal é 35–80"})
+        breakdown.append({"type": "positive", "msg": "Verbo de benefício concreto (+6 pts)"})
 
     # Direct/personalized language
     if re.search(r'\bvocê\b|\byour\b|\byou\b|\bseu\b|\bsua\b', sl):
         points += 3
-        breakdown.append({"type": "positive", "msg": "Usa linguagem direta/personalizada (+3 pts)"})
+        breakdown.append({"type": "positive", "msg": "Linguagem direta/personalizada (+3 pts)"})
 
     # Patterns that underperform
-    guia_pattern = re.search(r'\[guia\]|\[ebook\]|\[webinar\]|\[material\]|\[guide\]|\[report\]', sl)
-    if guia_pattern:
+    if re.search(r'\[guia\]|\[ebook\]|\[webinar\]|\[material\]|\[guide\]|\[report\]', sl):
         points -= 8
-        breakdown.append({"type": "negative", "msg": "Padrão [Guia]/[Ebook] — tende a gerar abertura alta mas CLTK muito baixo (-8 pts). Considere remover o prefixo."})
+        breakdown.append({"type": "negative", "msg": "Padrão [Guia]/[Ebook] — abertura alta mas CLTK baixo (-8 pts)"})
 
     vague_kws = ["você sabia", "voce sabia", "descubra como", "tudo sobre",
                  "tendências de", "o futuro de", "did you know", "everything about"]
     if any(k in sl for k in vague_kws):
-        points -= 5
-        breakdown.append({"type": "negative", "msg": "Assunto vago/curiosidade sem especificidade (-5 pts) — promete mas não entrega contexto"})
+        points -= 4
+        breakdown.append({"type": "negative", "msg": "Assunto vago sem especificidade (-4 pts)"})
 
-    # Excessive caps
-    upper_ratio = sum(1 for c in s if c.isupper()) / max(len(s), 1)
-    if upper_ratio > 0.4:
+    if sum(1 for c in s if c.isupper()) / max(len(s), 1) > 0.4:
         points -= 3
-        breakdown.append({"type": "warning", "msg": "Excesso de letras maiúsculas — pode ativar filtros de spam (-3 pts)"})
+        breakdown.append({"type": "warning", "msg": "Excesso de maiúsculas — pode ativar filtros de spam (-3 pts)"})
 
-    points = max(0, min(30, points))
-    return {"points": points, "max": 30, "breakdown": breakdown}
+    spam_kws = ["grátis", "gratis", "urgente!", "promoção exclusiva", "oferta imperdível",
+                "100% garantido", "free!", "click here", "act now"]
+    found = [k for k in spam_kws if k in sl]
+    if found:
+        points -= 4
+        breakdown.append({"type": "negative", "msg": f"Termos de spam: {', '.join(found)} (-4 pts)"})
 
-
-# ── Theme scoring (0–20 pts) ───────────────────────────────────────────────────
-
-def score_theme(theme_key: str) -> dict:
-    benchmark = THEME_BENCHMARKS.get(theme_key, THEME_BENCHMARKS["general"])
-    max_cltk  = 4.0  # product_news
-    ratio     = benchmark["cltk"] / max_cltk
-    points    = round(ratio * 20)
-    breakdown = []
-
-    if theme_key == "product_news":
-        breakdown.append({"type": "positive", "msg": f"Tema de maior CLTK histórico em B2B ({benchmark['cltk']}%) — e-mails de produto lideram engajamento (+{points} pts)"})
-    elif theme_key in ("trends_tech", "people_hr"):
-        breakdown.append({"type": "warning", "msg": f"Tema de CLTK moderado/baixo ({benchmark['cltk']}%). Considere ancorar em resultado concreto ou feature do produto (+{points} pts)"})
-    else:
-        breakdown.append({"type": "neutral", "msg": f"Tema com CLTK típico de {benchmark['cltk']}% em programas B2B (+{points} pts)"})
-
-    return {
-        "points":      points,
-        "max":         20,
-        "theme":       theme_key,
-        "theme_label": benchmark["label"],
-        "theme_cltk":  benchmark["cltk"],
-        "breakdown":   breakdown,
-    }
-
-
-# ── Segment scoring (0–20 pts) ────────────────────────────────────────────────
-
-def score_segment(segment: str, email_category: str) -> dict:
-    benchmarks = get_effective_segment_benchmarks()
-    bench      = benchmarks.get(segment, SEGMENT_BENCHMARKS["Geral"])
-    breakdown  = []
-    points     = 10
-
-    if segment == "Clientes":
-        points = 18
-        breakdown.append({"type": "positive", "msg": f"Clientes têm o melhor CLTK ({bench['cltk']}%) — segmento ideal para newsletter e conteúdo de produto"})
-    elif segment == "MQL+":
-        points = 14
-        breakdown.append({"type": "positive", "msg": f"MQL+ tem boa resposta ({bench['cltk']}% CLTK) — conteúdo pode acelerar conversão"})
-    elif segment == "MQL-":
-        points = 10
-        breakdown.append({"type": "neutral", "msg": f"MQL- tem CLTK médio ({bench['cltk']}%) — conteúdo mais direto e com CTA único tende a performar melhor"})
-    elif segment == "Lost":
-        points = 7
-        breakdown.append({"type": "warning", "msg": f"Lost tem abertura baixa ({bench['abertura']}%) e CLTK de {bench['cltk']}% — recomendado fluxo de reativação específico"})
-    elif segment == "Prospects":
-        points = 5
-        breakdown.append({"type": "negative", "msg": f"Prospects abrem ({bench['abertura']}%) mas não clicam ({bench['cltk']}% CLTK). E-mail mais curto com 1 CTA direto converte melhor nesse público."})
-    else:
-        breakdown.append({"type": "neutral", "msg": f"Base geral — CLTK típico de {bench['cltk']}%"})
-
-    # Category × segment cross-signals
-    if email_category == "Conversao" and segment == "Prospects":
-        breakdown.append({"type": "warning", "msg": "E-mail de Conversão para Prospects: plain text curto supera formato visual para esse público"})
-    if email_category == "Newsletter" and segment == "Prospects":
-        points -= 2
-        breakdown.append({"type": "negative", "msg": "Newsletter para Prospects: CLTK historicamente muito baixo — considere e-mail de conversão direto"})
-
-    points = max(0, min(20, points))
-    return {
-        "points":             points,
-        "max":                20,
-        "breakdown":          breakdown,
-        "benchmark_abertura": bench["abertura"],
-        "benchmark_cltk":     bench["cltk"],
-    }
+    return {"points": max(0, min(30, points)), "max": 30, "breakdown": breakdown}
 
 
 # ── Copy scoring (0–30 pts) ───────────────────────────────────────────────────
 
-def score_copy(body: str, email_category: str, has_cta: bool, cta_count: int) -> dict:
-    points    = 0
-    breakdown = []
-    b         = body.strip()
-    bl        = b.lower()
-    word_count = len(b.split())
+def score_copy(body: str, cluster) -> dict:
+    b          = body.strip()
+    bl         = b.lower()
+    word_count = _word_count(b)
+    points     = 0
+    breakdown  = []
 
-    # CTA presence
-    if has_cta:
-        points += 10
-        breakdown.append({"type": "positive", "msg": "Tem CTA (call-to-action) (+10 pts)"})
-        if cta_count == 1:
-            points += 5
-            breakdown.append({"type": "positive", "msg": "CTA único — foco claro aumenta taxa de clique (+5 pts)"})
-        elif cta_count > 2:
-            breakdown.append({"type": "warning", "msg": f"{cta_count} CTAs — múltiplos CTAs dividem atenção. Considere deixar apenas 1 primário"})
+    # Word count — compare against cluster profile if available
+    if cluster and cluster.get("copy", {}).get("word_p50"):
+        p25 = cluster["copy"].get("word_p25", 80)
+        p50 = cluster["copy"].get("word_p50", 180)
+        p75 = cluster["copy"].get("word_p75", 350)
+        if p25 <= word_count <= p75:
+            points += 8
+            breakdown.append({"type": "positive", "msg": f"{word_count} palavras — dentro da faixa do cluster (p25={p25:.0f}–p75={p75:.0f}) (+8 pts)"})
+        elif word_count < p25:
+            points += 3
+            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — abaixo do p25 ({p25:.0f}) do cluster"})
+        else:
+            points += 3
+            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — acima do p75 ({p75:.0f}) do cluster"})
     else:
-        breakdown.append({"type": "negative", "msg": "Sem CTA identificado — e-mail sem ação definida tende a ter CLTK próximo de zero"})
-
-    # Copy length vs category
-    if email_category in ("Conversao", "Pre-vendas"):
-        if word_count <= 150:
-            points += 6
-            breakdown.append({"type": "positive", "msg": f"{word_count} palavras — copy curta para Conversão (+6 pts). Plain text curto supera visual longo."})
-        elif word_count > 300:
-            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — copy longa para e-mail de Conversão. Considere reduzir e focar no CTA."})
-        else:
-            points += 3
-            breakdown.append({"type": "neutral", "msg": f"{word_count} palavras — comprimento aceitável"})
-    elif email_category == "Nutricao":
-        if 100 <= word_count <= 400:
-            points += 5
-            breakdown.append({"type": "positive", "msg": f"{word_count} palavras — comprimento ideal para Nutrição (+5 pts)"})
+        if 80 <= word_count <= 350:
+            points += 8
+            breakdown.append({"type": "positive", "msg": f"{word_count} palavras — comprimento adequado (+8 pts)"})
+        elif word_count < 30:
+            points += 1
+            breakdown.append({"type": "warning", "msg": f"Copy muito curta ({word_count} palavras)"})
         elif word_count > 600:
-            breakdown.append({"type": "warning", "msg": f"{word_count} palavras — muito longo. Considere resumir ou criar uma série."})
+            points += 2
+            breakdown.append({"type": "warning", "msg": f"Copy longa ({word_count} palavras) — boa estrutura é essencial"})
         else:
-            points += 3
-
-    # Opening with pain/context
-    first_sentence = b[:200].lower()
-    pain_kws = ["gestor", "frota", "custo", "problema", "desafio", "dificuldade",
-                "você já", "voce ja", "quantas vezes", "imagine", "e se você",
-                "manager", "fleet", "challenge", "problem", "have you ever"]
-    if any(k in first_sentence for k in pain_kws):
-        points += 5
-        breakdown.append({"type": "positive", "msg": "Abertura contextualiza dor/cenário do leitor (+5 pts)"})
+            points += 5
 
     # Concrete data/numbers
-    if re.search(r'\d+%|\d+x|\d+ vezes|r\$\s*\d+|\$\s*\d+|\d+ km|\d+\s*min', bl):
-        points += 4
-        breakdown.append({"type": "positive", "msg": "Usa dados ou números concretos (+4 pts) — aumenta credibilidade"})
+    if re.search(r'\d+%|\d+x|\d+ vezes|r\$\s*\d+|\$\s*\d+|\d+\s*min|\d+\s*h\b', bl):
+        points += 5
+        breakdown.append({"type": "positive", "msg": "Dados ou números concretos (+5 pts) — aumenta credibilidade"})
+
+    # Opening hook
+    first = b[:200].lower()
+    hook_kws = ["você já", "voce ja", "quantas vezes", "imagine", "e se você",
+                "have you ever", "what if", "problema", "desafio", "dificuldade",
+                "challenge", "o que seria", "já pensou"]
+    if any(k in first for k in hook_kws):
+        points += 5
+        breakdown.append({"type": "positive", "msg": "Abertura contextualiza cenário/dor do leitor (+5 pts)"})
 
     # Personalization tokens
-    if re.search(r'\{\{.*?\}\}|\[nome\]|\[name\]|\bgestor\b|\bmanager\b', bl):
+    if re.search(r'\{\{.*?\}\}|\[nome\]|\[name\]|\bfirst.?name\b', bl):
         points += 3
-        breakdown.append({"type": "positive", "msg": "Tem token de personalização (+3 pts)"})
+        breakdown.append({"type": "positive", "msg": "Token de personalização (+3 pts)"})
 
     # Paragraph structure
     line_breaks = b.count("\n")
     if line_breaks >= 3 and word_count > 50:
-        points += 3
-        breakdown.append({"type": "positive", "msg": "Boa estrutura visual com parágrafos curtos (+3 pts)"})
+        points += 4
+        breakdown.append({"type": "positive", "msg": "Boa estrutura com parágrafos curtos (+4 pts)"})
     elif word_count > 100 and line_breaks < 2:
         breakdown.append({"type": "warning", "msg": "Texto corrido sem quebras — parágrafos curtos melhoram leitura em mobile"})
 
     # Spam triggers
     spam_kws = ["grátis", "gratis", "clique aqui", "urgente!", "promoção exclusiva",
                 "oferta imperdível", "100% garantido", "free!", "click here", "act now"]
-    found_spam = [k for k in spam_kws if k in bl]
-    if found_spam:
+    found = [k for k in spam_kws if k in bl]
+    if found:
         points -= 5
-        breakdown.append({"type": "negative", "msg": f"Termos que ativam filtros de spam: {', '.join(found_spam)} (-5 pts)"})
+        breakdown.append({"type": "negative", "msg": f"Termos de spam: {', '.join(found)} (-5 pts)"})
 
-    points = max(0, min(30, points))
-    return {"points": points, "max": 30, "word_count": word_count, "breakdown": breakdown}
+    return {"points": max(0, min(30, points)), "max": 30, "word_count": word_count, "breakdown": breakdown}
 
 
-# ── Performance estimation ─────────────────────────────────────────────────────
+# ── Structure scoring (0–20 pts) ─────────────────────────────────────────────
 
-def estimate_performance(total_score: int, segment: str, theme_key: str, email_category: str) -> dict:
-    benchmarks  = get_effective_segment_benchmarks()
-    bench_seg   = benchmarks.get(segment, SEGMENT_BENCHMARKS["Geral"])
-    bench_theme = THEME_BENCHMARKS.get(theme_key, THEME_BENCHMARKS["general"])
+def score_structure(preheader: str, has_cta: bool, cta_count: int,
+                    has_hyperlink: bool, hyperlink_count: int, cluster) -> dict:
+    points    = 0
+    breakdown = []
 
-    score_ratio  = (total_score - 50) / 50
-    abertura_adj = bench_seg["abertura"] * (1 + score_ratio * 0.25)
-    abertura     = round(max(5, min(65, abertura_adj)), 1)
+    # Preheader
+    if preheader.strip():
+        ph_len = len(preheader)
+        if ph_len <= 90:
+            points += 5
+            breakdown.append({"type": "positive", "msg": f"Pré-header presente ({ph_len} chars) (+5 pts)"})
+        else:
+            points += 2
+            breakdown.append({"type": "warning", "msg": f"Pré-header com {ph_len} chars — pode ser truncado. Ideal: até 90 (+2 pts)"})
+    else:
+        breakdown.append({"type": "warning", "msg": "Sem pré-header — adicionar pode aumentar abertura em até 10%"})
 
-    base_cltk = (bench_seg["cltk"] * 0.5 + bench_theme["cltk"] * 0.5)
-    cltk_adj  = base_cltk * (1 + score_ratio * 0.4)
-    cltk      = round(max(0.1, min(15, cltk_adj)), 2)
+    # CTA/Button
+    cluster_btn_rate = cluster.get("cta", {}).get("button_rate") if cluster else None
+    if has_cta:
+        if cluster_btn_rate is not None:
+            pct = round(cluster_btn_rate * 100)
+            if cluster_btn_rate >= 0.5:
+                points += 8
+                breakdown.append({"type": "positive", "msg": f"Tem botão/CTA — {pct}% dos e-mails do cluster usam botão (+8 pts)"})
+            else:
+                points += 5
+                breakdown.append({"type": "neutral", "msg": f"Tem botão/CTA. Apenas {pct}% do cluster usa botão — avalie se o formato é adequado (+5 pts)"})
+        else:
+            points += 8
+            breakdown.append({"type": "positive", "msg": "Tem botão/CTA (+8 pts)"})
 
-    taxa_clique = round(cltk * abertura / 100, 2)
+        if cta_count == 1:
+            points += 4
+            breakdown.append({"type": "positive", "msg": "CTA único — foco claro aumenta taxa de clique (+4 pts)"})
+        elif cta_count == 2:
+            points += 2
+            breakdown.append({"type": "neutral", "msg": "2 CTAs — aceitável, mas 1 único tende a converter melhor (+2 pts)"})
+        else:
+            breakdown.append({"type": "warning", "msg": f"{cta_count} CTAs — múltiplos CTAs dividem a atenção do leitor"})
+    else:
+        breakdown.append({"type": "negative", "msg": "Sem botão/CTA — e-mail sem ação definida tende a ter CLTK próximo de zero"})
+
+    # Hyperlinks
+    if has_hyperlink:
+        points += 3
+        if hyperlink_count <= 3:
+            breakdown.append({"type": "positive", "msg": f"{hyperlink_count} hiperlink(s) — uso adequado (+3 pts)"})
+        else:
+            breakdown.append({"type": "warning", "msg": f"{hyperlink_count} hiperlinks — muitos links podem distrair do CTA (+3 pts)"})
+        if cluster and cluster.get("cta", {}).get("link_rate") is not None:
+            pct = round(cluster["cta"]["link_rate"] * 100)
+            breakdown.append({"type": "neutral", "msg": f"{pct}% dos e-mails do cluster também usam hiperlinks"})
+    else:
+        breakdown.append({"type": "neutral", "msg": "Sem hiperlinks no corpo"})
+
+    return {"points": max(0, min(20, points)), "max": 20, "breakdown": breakdown}
+
+
+# ── Context/Cluster scoring (0–20 pts) ───────────────────────────────────────
+
+def score_context(segment: str, category: str, cluster,
+                  copy_word_count: int, subject_char_count: int) -> dict:
+    points    = 0
+    breakdown = []
+
+    if not cluster:
+        if segment and category:
+            points = 10
+            breakdown.append({"type": "neutral", "msg": "Segmento e categoria informados (+10 pts). Importe sua base para calibrar com dados reais."})
+        elif segment or category:
+            points = 6
+            breakdown.append({"type": "neutral", "msg": "Segmento ou categoria informado (+6 pts). Importe sua base para calibrar."})
+        else:
+            points = 3
+            breakdown.append({"type": "warning", "msg": "Sem segmento/categoria — selecione para um score mais preciso (+3 pts)"})
+        return {"points": points, "max": 20, "has_cluster": False, "breakdown": breakdown}
+
+    total = cluster.get("total", 0)
+    if total >= 20:
+        points += 8
+        breakdown.append({"type": "positive", "msg": f"Cluster com {total} e-mails históricos — boa base de referência (+8 pts)"})
+    elif total >= 5:
+        points += 5
+        breakdown.append({"type": "neutral", "msg": f"Cluster com {total} e-mails — válido, mais dados melhoram a precisão (+5 pts)"})
+    else:
+        points += 3
+        breakdown.append({"type": "warning", "msg": f"Cluster com apenas {total} e-mail(s) — adicione mais dados (+3 pts)"})
+
+    # Copy length alignment
+    if cluster.get("copy", {}).get("word_p50"):
+        p25 = cluster["copy"].get("word_p25", 0)
+        p75 = cluster["copy"].get("word_p75", 9999)
+        if p25 <= copy_word_count <= p75:
+            points += 6
+            breakdown.append({"type": "positive", "msg": "Tamanho da copy alinhado com o padrão do cluster (+6 pts)"})
+        else:
+            points += 2
+            breakdown.append({"type": "warning", "msg": "Tamanho da copy fora da faixa típica do cluster (+2 pts)"})
+
+    # Subject length alignment
+    if cluster.get("subject", {}).get("len_p50"):
+        p25 = cluster["subject"].get("len_p25", 0)
+        p75 = cluster["subject"].get("len_p75", 9999)
+        if p25 <= subject_char_count <= p75:
+            points += 6
+            breakdown.append({"type": "positive", "msg": "Comprimento do assunto alinhado com o padrão do cluster (+6 pts)"})
+        else:
+            points += 2
+            breakdown.append({"type": "warning", "msg": "Comprimento do assunto fora da faixa típica do cluster (+2 pts)"})
+
+    return {
+        "points":        max(0, min(20, points)),
+        "max":           20,
+        "has_cluster":   True,
+        "cluster_total": total,
+        "breakdown":     breakdown,
+    }
+
+
+# ── Performance estimation ────────────────────────────────────────────────────
+
+def estimate_performance(total_score: int, cluster, global_data: dict) -> dict:
+    if cluster:
+        base_ab   = cluster["abertura"]["p50"]
+        base_cltk = cluster["cltk"]["p50"]
+        source    = "cluster"
+    elif global_data:
+        base_ab   = global_data.get("abertura_p50", FALLBACK_BENCHMARKS["abertura"])
+        base_cltk = global_data.get("cltk_p50",    FALLBACK_BENCHMARKS["cltk"])
+        source    = "global"
+    else:
+        base_ab   = FALLBACK_BENCHMARKS["abertura"]
+        base_cltk = FALLBACK_BENCHMARKS["cltk"]
+        source    = "fallback"
+
+    score_ratio = (total_score - 50) / 50
+    abertura    = round(max(5.0,  min(65.0, base_ab   * (1 + score_ratio * 0.25))), 1)
+    cltk        = round(max(0.1,  min(15.0, base_cltk * (1 + score_ratio * 0.40))), 2)
 
     return {
         "abertura_estimada":    abertura,
         "cltk_estimado":        cltk,
-        "taxa_clique_estimada": taxa_clique,
-        "benchmark_abertura":   bench_seg["abertura"],
-        "benchmark_cltk":       bench_seg["cltk"],
+        "taxa_clique_estimada": round(cltk * abertura / 100, 2),
+        "benchmark_abertura":   base_ab,
+        "benchmark_cltk":       base_cltk,
+        "source":               source,
     }
 
 
-# ── Rule-based suggestions ─────────────────────────────────────────────────────
+# ── Suggestions ───────────────────────────────────────────────────────────────
 
-def generate_rule_suggestions(subject_result, theme_result, segment_result, copy_result,
-                               segment, theme_key, email_category) -> list:
+def generate_suggestions(s_subject, s_copy, s_structure, s_context, cluster) -> list:
     suggestions = []
 
-    # Subject
-    if subject_result["points"] < 15:
-        if theme_key == "trends_tech":
-            suggestions.append({
-                "area": "Assunto", "priority": "alta",
-                "suggestion": "Ancore IA/tendências em um resultado concreto. Ex: em vez de 'O futuro da gestão com IA', tente 'Como a IA já está reduzindo custo da sua operação'."
-            })
-        elif theme_key == "security":
-            suggestions.append({
-                "area": "Assunto", "priority": "alta",
-                "suggestion": "Para segurança, mencione o benefício tangível: 'Reduza acidentes em X%' ou 'Seu painel agora alerta para fadiga do motorista'. Específico converte mais que genérico."
-            })
-        else:
-            suggestions.append({
-                "area": "Assunto", "priority": "alta",
-                "suggestion": "Adicione especificidade ao assunto. Os e-mails com maior CLTK em B2B mencionam diretamente produto, novidade ou melhoria. Ex: 'Novidade: [feature] já disponível para você'."
-            })
-
-    if any(b["msg"].startswith("Padrão [Guia]") for b in subject_result["breakdown"]):
+    if s_subject["points"] < 15:
         suggestions.append({
             "area": "Assunto", "priority": "alta",
-            "suggestion": "Remova o prefixo [Guia] ou [Ebook] do assunto. Esse padrão tende a gerar abertura alta mas CLTK muito baixo — o público abre mas não clica."
+            "suggestion": "Adicione especificidade: verbos de benefício concreto ('reduzir', 'aumentar', 'garantir') e comprimento entre 35–80 chars tendem a performar melhor."
         })
 
-    # Theme
-    if theme_key == "people_hr":
+    if any("Padrão [Guia]" in b["msg"] for b in s_subject["breakdown"]):
         suggestions.append({
-            "area": "Tema", "priority": "média",
-            "suggestion": "Pessoas/RH tem o menor CLTK típico. Considere enquadrar o conteúdo pela lente do gestor de operações: 'Como treinar sua equipe usando dados do painel' performa melhor que conteúdo genérico de RH."
-        })
-    elif theme_key == "trends_tech":
-        suggestions.append({
-            "area": "Tema", "priority": "média",
-            "suggestion": "IA/Tendências gera abertura alta mas CLTK baixo. O público se interessa mas não age. Combine com novidade de produto: 'Veja como a IA já funciona no seu painel hoje'."
+            "area": "Assunto", "priority": "alta",
+            "suggestion": "Remova o prefixo [Guia]/[Ebook] — esse padrão gera abertura alta mas CLTK baixo. O público abre por curiosidade mas não clica."
         })
 
-    # Segment
-    if segment == "Prospects":
+    if cluster and cluster.get("copy", {}).get("word_p75"):
+        p75 = cluster["copy"]["word_p75"]
+        if s_copy["word_count"] > p75:
+            suggestions.append({
+                "area": "Copy", "priority": "média",
+                "suggestion": f"Sua copy tem {s_copy['word_count']} palavras — acima do p75 do cluster ({p75:.0f}). Considere reduzir e focar no CTA."
+            })
+
+    no_cta = not any(
+        b["type"] in ("positive", "neutral") and ("CTA" in b["msg"] or "botão" in b["msg"].lower())
+        for b in s_structure["breakdown"]
+    )
+    if no_cta:
         suggestions.append({
-            "area": "Segmento", "priority": "alta",
-            "suggestion": "Para Prospects, newsletter padrão tem CLTK muito baixo. Considere e-mail mais curto (< 150 palavras) com 1 CTA único e direto para demo ou trial."
-        })
-    elif segment == "Lost":
-        suggestions.append({
-            "area": "Segmento", "priority": "média",
-            "suggestion": "Para Lost, foque em reativação pontual — uma oferta específica ou novidade de produto que resolva o motivo do churn. Newsletter padrão tem baixa adesão nesse segmento."
+            "area": "Estrutura", "priority": "alta",
+            "suggestion": "Adicione um CTA claro. Sem ação definida, o CLTK tende a zero."
         })
 
-    # Copy
-    if not any(b["msg"].startswith("Tem CTA") for b in copy_result["breakdown"]):
+    no_preheader = not any("Pré-header presente" in b["msg"] for b in s_structure["breakdown"])
+    if no_preheader:
         suggestions.append({
-            "area": "Copy", "priority": "alta",
-            "suggestion": "Adicione um CTA claro. Sem CTA, o CLTK tende a zero. Para Conversão: botão direto ('Ver demonstração'). Para Nutrição: link contextual no texto ('veja como funciona')."
+            "area": "Estrutura", "priority": "média",
+            "suggestion": "Adicione um pré-header de 40–90 chars complementando o assunto. Pode aumentar a taxa de abertura em até 10%."
         })
 
-    if copy_result["word_count"] > 400 and email_category == "Conversao":
+    if not s_context.get("has_cluster"):
         suggestions.append({
-            "area": "Copy", "priority": "média",
-            "suggestion": f"Copy com {copy_result['word_count']} palavras para e-mail de Conversão. Plain text curto (< 200 palavras) supera formato longo para Conversão. Corte ao essencial e confie no CTA."
+            "area": "Calibração", "priority": "baixa",
+            "suggestion": "Importe sua base histórica no Admin para calibrar os benchmarks com dados reais. O score ficará mais preciso."
         })
 
     if not suggestions:
         suggestions.append({
             "area": "Geral", "priority": "baixa",
-            "suggestion": "E-mail bem estruturado. Para garantir o topo do ranking, verifique se o assunto menciona uma novidade ou melhoria concreta do produto — esse é o padrão consistente nos e-mails com maior CLTK em B2B."
+            "suggestion": "E-mail bem estruturado. Verifique se assunto, pré-header e CTA estão alinhados — essa consistência é o principal fator de CLTK em e-mail B2B."
         })
 
-    return suggestions
+    return suggestions[:5]
 
 
-# ── Main function ──────────────────────────────────────────────────────────────
+# ── Main function ─────────────────────────────────────────────────────────────
 
-def score_email(subject: str, body: str, segment: str, email_category: str,
-                has_cta: bool = True, cta_count: int = 1,
-                preheader: str = "") -> dict:
+def score_email(subject: str, body: str, segment: str = "", category: str = "",
+                preheader: str = "", has_cta: bool = False, cta_count: int = 0,
+                has_hyperlink: bool = False, hyperlink_count: int = 0,
+                cluster_data: dict = None) -> dict:
 
-    theme_key = classify_theme(subject, body)
+    cluster     = _get_cluster(cluster_data or {}, segment, category)
+    global_data = (cluster_data or {}).get("global", {})
 
-    s_subject = score_subject(subject)
-    s_theme   = score_theme(theme_key)
-    s_segment = score_segment(segment, email_category)
-    s_copy    = score_copy(body, email_category, has_cta, cta_count)
+    s_subject   = score_subject(subject, cluster)
+    s_copy      = score_copy(body, cluster)
+    s_structure = score_structure(preheader, has_cta, cta_count,
+                                  has_hyperlink, hyperlink_count, cluster)
+    s_context   = score_context(segment, category, cluster,
+                                s_copy["word_count"], len(subject.strip()))
 
-    total = min(100, s_subject["points"] + s_theme["points"] + s_segment["points"] + s_copy["points"])
+    total = min(100, s_subject["points"] + s_copy["points"] +
+                     s_structure["points"] + s_context["points"])
 
     if total >= 80:
         rating, rating_color = "Excelente", "green"
@@ -450,45 +438,22 @@ def score_email(subject: str, body: str, segment: str, email_category: str,
         rating, rating_color = "Precisa de revisão", "red"
         rating_desc = "Pontos críticos identificados — recomendado revisar antes de enviar."
 
-    performance = estimate_performance(total, segment, theme_key, email_category)
-    suggestions = generate_rule_suggestions(s_subject, s_theme, s_segment, s_copy,
-                                            segment, theme_key, email_category)
-
-    # Preheader check
-    if not preheader.strip():
-        preheader_feedback = {
-            "type": "warning",
-            "msg": "Pré-header não informado. Aparece após o assunto na caixa de entrada e pode aumentar a abertura em até 10%. Recomendado: 40–90 caracteres complementando o assunto."
-        }
-    elif len(preheader) > 90:
-        preheader_feedback = {
-            "type": "warning",
-            "msg": f"Pré-header com {len(preheader)} caracteres — pode ser truncado. Ideal: até 90 caracteres."
-        }
-    else:
-        preheader_feedback = {
-            "type": "positive",
-            "msg": f"Pré-header presente ({len(preheader)} chars) — boa prática."
-        }
-
-    benchmarks = get_effective_segment_benchmarks()
+    performance = estimate_performance(total, cluster, global_data)
+    suggestions = generate_suggestions(s_subject, s_copy, s_structure, s_context, cluster)
 
     return {
-        "total_score":   total,
-        "rating":        rating,
-        "rating_color":  rating_color,
-        "rating_desc":   rating_desc,
+        "total_score":  total,
+        "rating":       rating,
+        "rating_color": rating_color,
+        "rating_desc":  rating_desc,
         "dimensions": {
-            "subject": s_subject,
-            "theme":   s_theme,
-            "segment": s_segment,
-            "copy":    s_copy,
+            "subject":   s_subject,
+            "copy":      s_copy,
+            "structure": s_structure,
+            "context":   s_context,
         },
-        "theme_key":          theme_key,
-        "theme_label":        s_theme["theme_label"],
-        "theme_cltk":         s_theme["theme_cltk"],
-        "performance":        performance,
-        "suggestions":        suggestions,
-        "preheader_feedback": preheader_feedback,
-        "segment_label":      benchmarks.get(segment, {}).get("label", segment),
+        "performance": performance,
+        "suggestions": suggestions,
+        "cluster_key": f"{segment}|{category}" if (segment or category) else None,
+        "has_cluster": cluster is not None,
     }

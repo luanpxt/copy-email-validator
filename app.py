@@ -3,7 +3,7 @@ Email Validator — Flask Backend
 Generic email marketing scoring tool. Calibrate with your own data.
 """
 
-import os, json, sqlite3, io, csv, time
+import os, json, sqlite3, io, csv, time, re
 from collections import defaultdict
 from datetime import datetime
 from functools import wraps
@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from scorer import score_email, SEGMENT_BENCHMARKS, THEME_BENCHMARKS, get_effective_segment_benchmarks
+from scorer import score_email
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
@@ -69,16 +69,20 @@ def init_db():
             result_json TEXT
         );
         CREATE TABLE IF NOT EXISTS email_data (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            imported_at TEXT NOT NULL,
-            subject     TEXT,
-            segment     TEXT,
-            category    TEXT,
-            email_copy  TEXT,
-            abertura    REAL,
-            cltk        REAL,
-            enviados    INTEGER,
-            source      TEXT
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            imported_at     TEXT NOT NULL,
+            subject         TEXT,
+            segment         TEXT,
+            category        TEXT,
+            email_copy      TEXT,
+            abertura        REAL,
+            cltk            REAL,
+            enviados        INTEGER,
+            has_button      INTEGER,
+            button_count    INTEGER,
+            has_hyperlink   INTEGER,
+            hyperlink_count INTEGER,
+            source          TEXT
         );
     """)
     conn.commit()
@@ -87,14 +91,21 @@ def init_db():
 init_db()
 
 def _migrate_db():
-    """Add columns introduced after the initial schema without breaking existing DBs."""
     conn = get_db()
-    for col, coltype in [("category", "TEXT"), ("email_copy", "TEXT")]:
+    new_cols = [
+        ("category",        "TEXT"),
+        ("email_copy",      "TEXT"),
+        ("has_button",      "INTEGER"),
+        ("button_count",    "INTEGER"),
+        ("has_hyperlink",   "INTEGER"),
+        ("hyperlink_count", "INTEGER"),
+    ]
+    for col, coltype in new_cols:
         try:
             conn.execute(f"ALTER TABLE email_data ADD COLUMN {col} {coltype}")
             conn.commit()
         except Exception:
-            pass  # column already exists
+            pass
     conn.close()
 
 _migrate_db()
@@ -169,26 +180,60 @@ def logout():
 def me():
     return jsonify({"logged_in": bool(session.get("logged_in"))})
 
+# ── Clusters API ──────────────────────────────────────────────────────────────
+@app.route("/api/clusters")
+@login_required
+def get_clusters():
+    """Return available segments and categories extracted from imported data."""
+    bench_path = os.path.join(DATA_DIR, "custom_benchmarks.json")
+    if not os.path.exists(bench_path):
+        return jsonify({"segments": [], "categories": [], "has_data": False})
+    try:
+        with open(bench_path) as f:
+            data = json.load(f)
+        clusters   = data.get("clusters", {})
+        segments   = sorted({k.split("|")[0] for k in clusters if k.split("|")[0]})
+        categories = sorted({k.split("|")[1] for k in clusters
+                             if len(k.split("|")) > 1 and k.split("|")[1]})
+        return jsonify({
+            "segments":   segments,
+            "categories": categories,
+            "has_data":   bool(clusters),
+        })
+    except Exception:
+        return jsonify({"segments": [], "categories": [], "has_data": False})
+
 # ── Validate API ──────────────────────────────────────────────────────────────
 @app.route("/api/validate", methods=["POST"])
 @login_required
 def validate():
-    data      = request.json or {}
-    subject   = data.get("subject", "").strip()
-    body      = data.get("body", "").strip()
-    preheader = data.get("preheader", "").strip()
-    segment   = data.get("segment", "Geral")
-    category  = data.get("category", "Newsletter")
-    has_cta   = data.get("has_cta", True)
-    cta_count = int(data.get("cta_count", 1))
+    data            = request.json or {}
+    subject         = data.get("subject",   "").strip()
+    body            = data.get("body",      "").strip()
+    preheader       = data.get("preheader", "").strip()
+    segment         = data.get("segment",   "").strip()
+    category        = data.get("category",  "").strip()
+    has_cta         = data.get("has_cta",        False)
+    cta_count       = int(data.get("cta_count",       0))
+    has_hyperlink   = data.get("has_hyperlink",  False)
+    hyperlink_count = int(data.get("hyperlink_count",  0))
 
     if not subject:
         return jsonify({"error": "Assunto é obrigatório"}), 400
 
+    cluster_data = _load_cluster_data()
+
     result = score_email(
-        subject=subject, body=body, segment=segment,
-        email_category=category, has_cta=has_cta,
-        cta_count=cta_count, preheader=preheader,
+        subject=subject,
+        body=body,
+        segment=segment,
+        category=category,
+        preheader=preheader,
+        has_cta=has_cta,
+        cta_count=cta_count,
+        has_hyperlink=has_hyperlink,
+        hyperlink_count=hyperlink_count,
+        cluster_data=cluster_data,
     )
 
     ai_cfg = get_ai_config()
@@ -200,7 +245,8 @@ def validate():
 
     conn = get_db()
     conn.execute(
-        "INSERT INTO validations (created_at, subject, segment, category, total_score, rating, result_json) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO validations (created_at, subject, segment, category, total_score, rating, result_json) "
+        "VALUES (?,?,?,?,?,?,?)",
         (datetime.utcnow().isoformat(), subject, segment, category,
          result["total_score"], result["rating"], json.dumps(result, ensure_ascii=False))
     )
@@ -209,23 +255,32 @@ def validate():
 
     return jsonify(result)
 
+def _load_cluster_data() -> dict:
+    bench_path = os.path.join(DATA_DIR, "custom_benchmarks.json")
+    try:
+        with open(bench_path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
 # ── AI enrichment (multi-provider) ───────────────────────────────────────────
 def _build_ai_prompt(result, subject, body, segment, category, preheader) -> str:
+    dims = result.get("dimensions", {})
     score_summary = (
         f"Score total: {result['total_score']}/100 ({result['rating']})\n"
-        f"- Assunto: {result['dimensions']['subject']['points']}/30\n"
-        f"- Tema ({result['theme_label']}): {result['dimensions']['theme']['points']}/20\n"
-        f"- Segmento ({segment}): {result['dimensions']['segment']['points']}/20\n"
-        f"- Copy: {result['dimensions']['copy']['points']}/30\n"
-        f"Abertura estimada: {result['performance']['abertura_estimada']}%\n"
-        f"CLTK estimado: {result['performance']['cltk_estimado']}%"
+        f"- Assunto: {dims.get('subject', {}).get('points', 0)}/30\n"
+        f"- Copy: {dims.get('copy', {}).get('points', 0)}/30\n"
+        f"- Estrutura: {dims.get('structure', {}).get('points', 0)}/20\n"
+        f"- Contexto/Cluster: {dims.get('context', {}).get('points', 0)}/20\n"
+        f"Abertura estimada: {result.get('performance', {}).get('abertura_estimada', '?')}%\n"
+        f"CLTK estimado: {result.get('performance', {}).get('cltk_estimado', '?')}%"
     )
     return (
         "Você é um especialista em email marketing B2B. "
         "Analise este e-mail e dê 3 sugestões de melhoria ESPECÍFICAS E ACIONÁVEIS, em português.\n\n"
         f"Assunto: {subject}\n"
         f"Pré-header: {preheader or '(não informado)'}\n"
-        f"Segmento: {segment} | Categoria: {category}\n"
+        f"Segmento: {segment or 'Não informado'} | Categoria: {category or 'Não informada'}\n"
         f"Copy:\n{body[:1000]}\n\n"
         f"{score_summary}\n\n"
         "Formato:\n1. [Área]: [Sugestão com exemplo reescrito quando relevante]\n2. ...\n3. ...\n\n"
@@ -240,16 +295,12 @@ def enrich_with_ai(result, subject, body, segment, category, preheader, cfg: dic
     if provider == "openai":
         import openai
         model  = cfg.get("model") or "gpt-4o-mini"
-        client = openai.OpenAI(
-            api_key=api_key,
-            base_url=cfg.get("base_url") or None,
-        )
-        resp = client.chat.completions.create(
+        client = openai.OpenAI(api_key=api_key, base_url=cfg.get("base_url") or None)
+        resp   = client.chat.completions.create(
             model=model, max_tokens=600,
             messages=[{"role": "user", "content": prompt}],
         )
         ai_text = resp.choices[0].message.content
-
     else:  # anthropic (default)
         import anthropic
         model  = cfg.get("model") or "claude-haiku-4-5-20251001"
@@ -283,18 +334,18 @@ def benchmarks():
     conn  = get_db()
     count = conn.execute("SELECT COUNT(*) as n FROM email_data").fetchone()["n"]
     conn.close()
+    custom_bench = _load_cluster_data()
     return jsonify({
-        "segments":       get_effective_segment_benchmarks(),
-        "themes":         THEME_BENCHMARKS,
-        "imported_emails": count,
+        "custom_benchmarks": custom_bench,
+        "imported_emails":   count,
+        "has_data":          bool(custom_bench.get("clusters")),
     })
 
 # ── Admin: AI config ──────────────────────────────────────────────────────────
 @app.route("/api/admin/ai-config", methods=["GET"])
 @login_required
 def get_ai_config_route():
-    cfg = get_ai_config()
-    # Never return the raw key to the client
+    cfg  = get_ai_config()
     safe = {k: v for k, v in cfg.items() if k != "api_key"}
     safe["has_key"] = bool(cfg.get("api_key"))
     return jsonify(safe)
@@ -304,9 +355,9 @@ def get_ai_config_route():
 def save_ai_config_route():
     data     = request.json or {}
     provider = data.get("provider", "anthropic")
-    model    = data.get("model", "").strip()
+    model    = data.get("model",    "").strip()
     base_url = data.get("base_url", "").strip()
-    api_key  = data.get("api_key", "").strip()
+    api_key  = data.get("api_key",  "").strip()
 
     if provider not in ("anthropic", "openai", "custom"):
         return jsonify({"error": "Provider inválido. Use: anthropic, openai ou custom"}), 400
@@ -316,7 +367,6 @@ def save_ai_config_route():
         "provider": provider,
         "model":    model,
         "base_url": base_url,
-        # Keep existing key if new one is blank
         "api_key":  api_key or existing.get("api_key", ""),
     }
     save_ai_config(cfg)
@@ -342,13 +392,17 @@ def admin_upload():
         return jsonify({"error": f"Erro ao ler CSV: {str(e)}"}), 400
 
     col_candidates = {
-        "subject":   ["Assunto", "Subject", "assunto", "subject", "Name", "Nome", "Email name"],
-        "sent":      ["Enviado", "Sent", "enviado", "Recipients", "Enviados"],
-        "open_rate": ["Taxa de abertura", "Open Rate", "taxa_abertura", "taxa de abertura", "Open rate"],
-        "cltk":      ["Taxa de clickthrough", "CLTK", "taxa_cltk", "taxa de clickthrough", "Click rate"],
-        "segment":   ["Segmento", "Segment", "Audience", "Público", "Lista", "List", "segmento", "audience"],
-        "category":  ["Categoria", "Category", "Objetivo", "Tipo", "Type", "categoria", "category", "objetivo"],
-        "copy":      ["Copy", "Texto", "Body", "Conteúdo", "Conteudo", "copy", "texto", "body"],
+        "subject":          ["Assunto", "Subject", "assunto", "subject", "Name", "Nome", "Email name"],
+        "sent":             ["Enviado", "Sent", "enviado", "Recipients", "Enviados"],
+        "open_rate":        ["Taxa de abertura", "Open Rate", "taxa_abertura", "taxa de abertura", "Open rate"],
+        "cltk":             ["Taxa de clickthrough", "CLTK", "taxa_cltk", "taxa de clickthrough", "Click rate"],
+        "segment":          ["Segmento", "Segment", "Audience", "Público", "Lista", "List", "segmento", "audience"],
+        "category":         ["Categoria", "Category", "Objetivo", "Tipo", "Type", "categoria", "category", "objetivo"],
+        "copy":             ["Copy", "Texto", "Body", "Conteúdo", "Conteudo", "copy", "texto", "body"],
+        "has_button":       ["Tem botão", "Has button", "Botão", "Button", "tem_botao", "has_button"],
+        "button_count":     ["Qtd botões", "Button count", "qtd_botoes", "button_count"],
+        "has_hyperlink":    ["Tem link", "Has link", "Hyperlink", "Link", "tem_link", "has_hyperlink"],
+        "hyperlink_count":  ["Qtd links", "Link count", "qtd_links", "hyperlink_count"],
     }
 
     def find_col(hdrs, keys):
@@ -357,13 +411,17 @@ def admin_upload():
                 return k
         return None
 
-    subj_col = find_col(headers, col_candidates["subject"])
-    open_col = find_col(headers, col_candidates["open_rate"])
-    cltk_col = find_col(headers, col_candidates["cltk"])
-    sent_col = find_col(headers, col_candidates["sent"])
-    seg_col  = find_col(headers, col_candidates["segment"])
-    cat_col  = find_col(headers, col_candidates["category"])
-    copy_col = find_col(headers, col_candidates["copy"])
+    subj_col      = find_col(headers, col_candidates["subject"])
+    open_col      = find_col(headers, col_candidates["open_rate"])
+    cltk_col      = find_col(headers, col_candidates["cltk"])
+    sent_col      = find_col(headers, col_candidates["sent"])
+    seg_col       = find_col(headers, col_candidates["segment"])
+    cat_col       = find_col(headers, col_candidates["category"])
+    copy_col      = find_col(headers, col_candidates["copy"])
+    btn_col       = find_col(headers, col_candidates["has_button"])
+    btn_cnt_col   = find_col(headers, col_candidates["button_count"])
+    link_col      = find_col(headers, col_candidates["has_hyperlink"])
+    link_cnt_col  = find_col(headers, col_candidates["hyperlink_count"])
 
     if not (open_col and cltk_col):
         return jsonify({
@@ -371,25 +429,49 @@ def admin_upload():
                      f"Colunas encontradas: {headers[:10]}"
         }), 400
 
+    def _parse_bool(val):
+        if val is None:
+            return None
+        return 1 if str(val).strip().lower() in ("1", "true", "sim", "yes", "s", "y") else 0
+
+    def _parse_int(row, col):
+        if not col or not row.get(col):
+            return None
+        try:
+            return int(float(str(row[col]).replace(",", ".")))
+        except (ValueError, TypeError):
+            return None
+
     inserted = 0
     conn = get_db()
     now  = datetime.utcnow().isoformat()
 
     for row in rows_raw:
         try:
-            subject  = str(row.get(subj_col, "")).strip() if subj_col else ""
             abertura = float(str(row[open_col]).replace(",", ".").replace("%", ""))
             cltk     = float(str(row[cltk_col]).replace(",", ".").replace("%", ""))
-            enviados = int(float(str(row[sent_col]).replace(",", "."))) if sent_col and row.get(sent_col) else None
-            segment    = str(row.get(seg_col,  "")).strip() if seg_col  else None
-            category   = str(row.get(cat_col,  "")).strip() if cat_col  else None
-            email_copy = str(row.get(copy_col, "")).strip() if copy_col else None
             if not (0 <= abertura <= 100 and 0 <= cltk <= 100):
                 continue
+
             conn.execute(
-                "INSERT INTO email_data (imported_at, subject, segment, category, email_copy, abertura, cltk, enviados, source) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (now, subject, segment, category, email_copy, abertura, cltk, enviados, file.filename)
+                "INSERT INTO email_data "
+                "(imported_at, subject, segment, category, email_copy, abertura, cltk, enviados, "
+                " has_button, button_count, has_hyperlink, hyperlink_count, source) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    now,
+                    str(row.get(subj_col, "")).strip() if subj_col else "",
+                    str(row.get(seg_col,  "")).strip() if seg_col  else None,
+                    str(row.get(cat_col,  "")).strip() if cat_col  else None,
+                    str(row.get(copy_col, "")).strip() if copy_col else None,
+                    abertura, cltk,
+                    _parse_int(row, sent_col),
+                    _parse_bool(row.get(btn_col))  if btn_col  else None,
+                    _parse_int(row, btn_cnt_col),
+                    _parse_bool(row.get(link_col)) if link_col else None,
+                    _parse_int(row, link_cnt_col),
+                    file.filename,
+                )
             )
             inserted += 1
         except (ValueError, TypeError, KeyError):
@@ -397,66 +479,123 @@ def admin_upload():
 
     conn.commit()
 
-    # Rebuild benchmarks from all imported data
-    db_rows = conn.execute("SELECT segment, category, abertura, cltk FROM email_data").fetchall()
+    db_rows = conn.execute(
+        "SELECT segment, category, abertura, cltk, subject, email_copy, "
+        "has_button, button_count, has_hyperlink, hyperlink_count FROM email_data"
+    ).fetchall()
     conn.close()
 
     _rebuild_benchmarks(db_rows)
+
+    extra_cols = [c for c in [
+        seg_col  and "segmento",
+        cat_col  and "categoria",
+        copy_col and "copy",
+        btn_col  and "botão",
+        link_col and "hiperlink",
+    ] if c]
 
     return jsonify({
         "ok":         True,
         "inserted":   inserted,
         "total_rows": len(rows_raw),
         "message":    f"{inserted} e-mails importados com sucesso."
-                      + (f" Colunas extras: {', '.join(c for c in [seg_col and 'segmento', cat_col and 'categoria', copy_col and 'copy'] if c)}."
-                         if any([seg_col, cat_col, copy_col]) else
+                      + (f" Colunas detectadas: {', '.join(extra_cols)}." if extra_cols else
                          " Dica: adicione colunas de Segmento, Categoria e Copy para calibração mais precisa."),
     })
 
+# ── Feature extraction & benchmark rebuild ───────────────────────────────────
+
+def _count_emojis(text: str) -> int:
+    return len(re.findall(r'[\U00010000-\U0010ffff]|[☀-⟿]', text or ""))
+
+def _word_count(text: str) -> int:
+    return len((text or "").split())
+
+def _percentile(data: list, p: int) -> float:
+    if not data:
+        return 0.0
+    s   = sorted(data)
+    idx = (p / 100) * (len(s) - 1)
+    lo  = int(idx)
+    hi  = min(lo + 1, len(s) - 1)
+    return round(s[lo] + (idx - lo) * (s[hi] - s[lo]), 2)
+
+
 def _rebuild_benchmarks(db_rows):
-    """Recalculate overall, per-segment and per-category benchmarks from all imported rows."""
+    """Rebuild cluster benchmarks with percentiles and feature profiles from all imported rows."""
     if not db_rows:
         return
+
+    clusters: dict = defaultdict(list)
+    for r in db_rows:
+        seg = (r["segment"]  or "").strip()
+        cat = (r["category"] or "").strip()
+        clusters[f"{seg}|{cat}"].append(r)
+
+    cluster_data = {}
+    for key, rows in clusters.items():
+        ab = [r["abertura"] for r in rows if r["abertura"] is not None]
+        cl = [r["cltk"]    for r in rows if r["cltk"]    is not None]
+        if not ab:
+            continue
+
+        subj_lens   = [len(r["subject"]    or "") for r in rows if r["subject"]]
+        subj_emojis = [_count_emojis(r["subject"] or "") for r in rows if r["subject"]]
+        copy_words  = [_word_count(r["email_copy"] or "") for r in rows if r["email_copy"]]
+        copy_lens   = [len(r["email_copy"] or "") for r in rows if r["email_copy"]]
+        btn_rows    = [r["has_button"]      for r in rows if r["has_button"]      is not None]
+        link_rows   = [r["has_hyperlink"]   for r in rows if r["has_hyperlink"]   is not None]
+        btn_cnts    = [r["button_count"]    for r in rows if r["button_count"]    is not None]
+        link_cnts   = [r["hyperlink_count"] for r in rows if r["hyperlink_count"] is not None]
+
+        cluster_data[key] = {
+            "total": len(ab),
+            "abertura": {
+                "p25": _percentile(ab, 25),
+                "p50": _percentile(ab, 50),
+                "p75": _percentile(ab, 75),
+            },
+            "cltk": {
+                "p25": _percentile(cl, 25),
+                "p50": _percentile(cl, 50),
+                "p75": _percentile(cl, 75),
+            },
+            "subject": {
+                "len_p25":   _percentile(subj_lens,   25) if subj_lens   else None,
+                "len_p50":   _percentile(subj_lens,   50) if subj_lens   else None,
+                "len_p75":   _percentile(subj_lens,   75) if subj_lens   else None,
+                "emoji_p50": _percentile(subj_emojis, 50) if subj_emojis else None,
+            },
+            "copy": {
+                "word_p25": _percentile(copy_words, 25) if copy_words else None,
+                "word_p50": _percentile(copy_words, 50) if copy_words else None,
+                "word_p75": _percentile(copy_words, 75) if copy_words else None,
+                "len_p50":  _percentile(copy_lens,  50) if copy_lens  else None,
+            },
+            "cta": {
+                "button_rate":  round(sum(btn_rows)  / len(btn_rows),  2) if btn_rows  else None,
+                "link_rate":    round(sum(link_rows) / len(link_rows), 2) if link_rows else None,
+                "btn_cnt_p50":  _percentile(btn_cnts,  50)               if btn_cnts  else None,
+                "link_cnt_p50": _percentile(link_cnts, 50)               if link_cnts else None,
+            },
+        }
 
     all_ab   = [r["abertura"] for r in db_rows if r["abertura"] is not None]
     all_cltk = [r["cltk"]    for r in db_rows if r["cltk"]    is not None]
 
-    def _agg(rows):
-        ab   = [r["abertura"] for r in rows if r["abertura"] is not None]
-        cl   = [r["cltk"]     for r in rows if r["cltk"]     is not None]
-        if not ab: return None
-        return {
-            "abertura": round(sum(ab) / len(ab), 2),
-            "cltk":     round(sum(cl) / len(cl), 2) if cl else 0,
-            "total":    len(ab),
-        }
-
-    by_segment:  dict = defaultdict(list)
-    by_category: dict = defaultdict(list)
-    for r in db_rows:
-        seg = (r["segment"]  or "").strip()
-        cat = (r["category"] or "").strip()
-        if seg: by_segment[seg].append(r)
-        if cat: by_category[cat].append(r)
-
-    custom = {
-        "media_abertura": round(sum(all_ab)   / len(all_ab),   2) if all_ab   else 25.0,
-        "media_cltk":     round(sum(all_cltk) / len(all_cltk), 2) if all_cltk else 1.5,
-        "total_emails":   len(all_ab),
+    output = {
+        "clusters": cluster_data,
+        "global": {
+            "total":        len(all_ab),
+            "abertura_p50": _percentile(all_ab,   50),
+            "cltk_p50":     _percentile(all_cltk, 50),
+        },
     }
 
-    seg_data = {seg: _agg(rows) for seg, rows in by_segment.items()}
-    cat_data = {cat: _agg(rows) for cat, rows in by_category.items()}
-
-    if any(v for v in seg_data.values()):
-        custom["segments"] = {k: v for k, v in seg_data.items() if v}
-    if any(v for v in cat_data.values()):
-        custom["categories"] = {k: v for k, v in cat_data.items() if v}
-
     os.makedirs(DATA_DIR, exist_ok=True)
-    bench_path = os.path.join(DATA_DIR, "custom_benchmarks.json")
-    with open(bench_path, "w") as f:
-        json.dump(custom, f, ensure_ascii=False, indent=2)
+    with open(os.path.join(DATA_DIR, "custom_benchmarks.json"), "w") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
 
 # ── Admin: stats ──────────────────────────────────────────────────────────────
 @app.route("/api/admin/stats")
@@ -472,19 +611,13 @@ def admin_stats():
     ).fetchall()
     conn.close()
 
-    bench_path   = os.path.join(DATA_DIR, "custom_benchmarks.json")
-    custom_bench = {}
-    if os.path.exists(bench_path):
-        with open(bench_path) as f:
-            custom_bench = json.load(f)
-
     return jsonify({
         "total_validations":  total_val,
         "total_email_data":   total_data,
         "last_import":        last_import,
         "avg_score":          round(avg_score, 1) if avg_score else None,
         "recent_validations": [dict(r) for r in recent],
-        "custom_benchmarks":  custom_bench,
+        "custom_benchmarks":  _load_cluster_data(),
     })
 
 if __name__ == "__main__":

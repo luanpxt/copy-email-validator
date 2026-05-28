@@ -93,6 +93,30 @@
               <div class="flex items-start gap-2">
                 <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
                 <div>
+                  <p class="text-slate-200 font-medium">Segmento da base</p>
+                  <p class="text-slate-500 text-xs mt-0.5">Qual lista ou segmento recebeu o e-mail. Use os nomes que fazem sentido para sua empresa — a ferramenta aprende os padrões de cada segmento automaticamente e os disponibiliza no formulário.</p>
+                  <p class="text-slate-600 text-xs mt-1">Exemplos: <code class="text-slate-400">Clientes</code>, <code class="text-slate-400">Prospects</code>, <code class="text-slate-400">Leads</code>, <code class="text-slate-400">Transacional</code>…</p>
+                  <p class="text-slate-600 text-xs mt-0.5">Nome da coluna: <code class="text-slate-400">Segmento</code> ou <code class="text-slate-400">Segment</code> ou <code class="text-slate-400">Audience</code> ou <code class="text-slate-400">Lista</code></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-lg px-3 py-2.5 border border-slate-600">
+              <div class="flex items-start gap-2">
+                <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
+                <div>
+                  <p class="text-slate-200 font-medium">Categoria do e-mail</p>
+                  <p class="text-slate-500 text-xs mt-0.5">Objetivo do envio. Use os nomes que fazem sentido para sua empresa — eles aparecerão como opções no formulário de validação.</p>
+                  <p class="text-slate-600 text-xs mt-1">Exemplos: <code class="text-slate-400">Newsletter</code>, <code class="text-slate-400">Conversao</code>, <code class="text-slate-400">Nutricao</code>, <code class="text-slate-400">Transacional</code>…</p>
+                  <p class="text-slate-600 text-xs mt-0.5">Nome da coluna: <code class="text-slate-400">Categoria</code> ou <code class="text-slate-400">Category</code> ou <code class="text-slate-400">Objetivo</code></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-lg px-3 py-2.5 border border-slate-600">
+              <div class="flex items-start gap-2">
+                <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
+                <div>
                   <p class="text-slate-200 font-medium">Copy</p>
                   <p class="text-slate-500 text-xs mt-0.5">Texto puro do e-mail (sem HTML). Cole o conteúdo de cada envio na célula correspondente.</p>
                   <p class="text-slate-600 text-xs mt-1">Nome da coluna: <code class="text-slate-400">Copy</code> ou <code class="text-slate-400">Texto</code> ou <code class="text-slate-400">Body</code></p>
@@ -104,35 +128,14 @@
               <div class="flex items-start gap-2">
                 <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
                 <div>
-                  <p class="text-slate-200 font-medium">Categoria</p>
-                  <p class="text-slate-500 text-xs mt-0.5">Objetivo do e-mail. Classifique cada envio com um dos valores abaixo:</p>
-                  <div class="flex flex-wrap gap-1.5 mt-1.5">
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Newsletter</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Nutricao</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Conversao</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Pre-vendas</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Agradecimento</span>
+                  <p class="text-slate-200 font-medium">Botão e hiperlink <span class="text-slate-500 font-normal">(opcional)</span></p>
+                  <p class="text-slate-500 text-xs mt-0.5">Se quiser calibrar o padrão de CTAs e links do cluster, adicione estas colunas:</p>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-1.5 text-xs">
+                    <div><code class="text-slate-400">Tem botão</code> — <span class="text-slate-500">Sim/Não ou 1/0</span></div>
+                    <div><code class="text-slate-400">Qtd botões</code> — <span class="text-slate-500">número</span></div>
+                    <div><code class="text-slate-400">Tem link</code> — <span class="text-slate-500">Sim/Não ou 1/0</span></div>
+                    <div><code class="text-slate-400">Qtd links</code> — <span class="text-slate-500">número</span></div>
                   </div>
-                  <p class="text-slate-600 text-xs mt-1.5">Nome da coluna: <code class="text-slate-400">Categoria</code> ou <code class="text-slate-400">Category</code> ou <code class="text-slate-400">Objetivo</code></p>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-slate-800 rounded-lg px-3 py-2.5 border border-slate-600">
-              <div class="flex items-start gap-2">
-                <span class="text-yellow-400 font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0">manual</span>
-                <div>
-                  <p class="text-slate-200 font-medium">Tipo da base (segmento)</p>
-                  <p class="text-slate-500 text-xs mt-0.5">Qual lista ou segmento recebeu o e-mail. Classifique cada envio:</p>
-                  <div class="flex flex-wrap gap-1.5 mt-1.5">
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Clientes</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">MQL+</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">MQL-</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Prospects</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Lost</span>
-                    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">Geral</span>
-                  </div>
-                  <p class="text-slate-600 text-xs mt-1.5">Nome da coluna: <code class="text-slate-400">Segmento</code> ou <code class="text-slate-400">Segment</code> ou <code class="text-slate-400">Audience</code> ou <code class="text-slate-400">Lista</code></p>
                 </div>
               </div>
             </div>
@@ -253,16 +256,12 @@
 
   <!-- BENCHMARKS ATUAIS -->
   <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-    <h2 class="text-lg font-bold text-white mb-4">Benchmarks atuais</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div>
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Por segmento</h3>
-        <div id="segmentBenchs" class="space-y-2"></div>
-      </div>
-      <div>
-        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Por tema</h3>
-        <div id="themeBenchs" class="space-y-2"></div>
-      </div>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-white">Clusters calibrados</h2>
+      <span id="clusterCount" class="text-xs text-slate-500"></span>
+    </div>
+    <div id="clusterBenchs">
+      <p class="text-sm text-slate-500">Nenhum dado importado ainda. Importe um CSV acima para calibrar os clusters.</p>
     </div>
   </div>
 
@@ -381,30 +380,46 @@
 
     } catch(e) {}
 
-    // Benchmarks
+    // Clusters
     try {
       const res  = await fetch('/api/benchmarks');
       const data = await res.json();
+      const clusters = data.custom_benchmarks?.clusters || {};
+      const keys = Object.keys(clusters);
 
-      document.getElementById('segmentBenchs').innerHTML = Object.entries(data.segments).map(([k, v]) =>
-        `<div class="flex justify-between items-center text-sm py-1.5 border-b border-slate-700">
-          <span class="text-slate-300">${v.label}</span>
-          <div class="text-right">
-            <span class="text-emerald-400 font-mono">${v.cltk}%</span>
-            <span class="text-slate-500 text-xs ml-1">CLTK</span>
-          </div>
-        </div>`).join('');
+      document.getElementById('clusterCount').textContent =
+        keys.length ? keys.length + ' cluster(s) identificado(s)' : '';
 
-      document.getElementById('themeBenchs').innerHTML = Object.entries(data.themes)
-        .sort((a, b) => b[1].cltk - a[1].cltk)
-        .map(([k, v]) =>
-        `<div class="flex justify-between items-center text-sm py-1.5 border-b border-slate-700">
-          <span class="text-slate-300 truncate pr-2">${v.label}</span>
-          <div class="text-right flex-shrink-0">
-            <span class="text-blue-400 font-mono">${v.cltk}%</span>
-            <span class="text-slate-500 text-xs ml-1">CLTK</span>
-          </div>
-        </div>`).join('');
+      if (!keys.length) {
+        document.getElementById('clusterBenchs').innerHTML =
+          '<p class="text-sm text-slate-500">Nenhum dado importado ainda. Importe um CSV acima para calibrar os clusters.</p>';
+      } else {
+        document.getElementById('clusterBenchs').innerHTML = `
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-xs text-slate-500 border-b border-slate-700">
+                  <th class="text-left py-2 pr-4 font-medium">Cluster (Segmento › Categoria)</th>
+                  <th class="text-right py-2 px-3 font-medium">E-mails</th>
+                  <th class="text-right py-2 px-3 font-medium">Abertura p50</th>
+                  <th class="text-right py-2 px-3 font-medium">CLTK p50</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${keys.sort().map(k => {
+                  const c   = clusters[k];
+                  const lbl = k.replace('|', ' › ') || '(sem segmento/categoria)';
+                  return `<tr class="border-b border-slate-700/50 hover:bg-slate-700/20">
+                    <td class="py-2 pr-4 text-slate-300">${escapeHtml(lbl)}</td>
+                    <td class="py-2 px-3 text-right text-slate-400">${c.total}</td>
+                    <td class="py-2 px-3 text-right text-blue-400 font-mono">${c.abertura.p50}%</td>
+                    <td class="py-2 px-3 text-right text-emerald-400 font-mono">${c.cltk.p50}%</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
     } catch(e) {}
   }
 
